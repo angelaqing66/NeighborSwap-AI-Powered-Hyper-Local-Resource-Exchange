@@ -106,6 +106,70 @@ Socket.io is initialized once in `lib/socket/` and attached to the Next.js custo
 - **Typing**: `strict: true` in `tsconfig.json`. Avoid `any`; use `unknown` and narrow explicitly.
 - **Env vars**: Server-only secrets (Groq API key, Supabase service role) must only be accessed in server-side code. Prefix public vars with `NEXT_PUBLIC_`.
 
+### Agent Conventions
+
+- **Single Groq entry point**: All agents call Groq exclusively through `lib/agents/groq-client.ts`. No agent imports the Groq SDK directly.
+- **Agent signature**: Every agent exports one async function — `run<AgentName>(input: <AgentName>Input): Promise<<AgentName>Output>`. Inputs and outputs are named interfaces, not inline types.
+- **No DB access in agents**: Agents are pure inference functions. DB writes from agent results happen in `actions/` Server Actions only.
+- **JSON output contract**: Every agent instructs the model to return a JSON object. If JSON parsing fails, the agent returns a safe default (`verdict: 'review'`, `confidence: 0`) — it never throws a parse error.
+- **PII in prompts**: Strip or redact user-identifying fields before passing content to Groq. Only `trade_id` may be forwarded for audit correlation — never `initiator_id`, `counterparty_id`, or raw user content containing names/contact details.
+- **Tests**: Every agent has a co-located `__tests__/<agent>.test.ts`. Mock `groq-client.ts` via `vi.mock`; never make live API calls in tests. Include at least one LLM-as-judge eval test that scores the agent's `reasoning` field for quality.
+
+#### Agent File Layout
+
+```
+src/lib/agents/
+  groq-client.ts        # Thin Groq API wrapper — the only file that reads GROQ_API_KEY
+  runner.ts             # Parallel runner — Promise.allSettled over all three agents
+  safety.ts             # Safety agent — PII redaction + content moderation
+  logistics.ts          # Logistics agent — pickup/delivery coordination
+  vibe.ts               # Vibe agent — trust/social scoring
+  __tests__/
+    safety.test.ts
+    logistics.test.ts
+    vibe.test.ts
+    runner.test.ts
+```
+
+#### Canonical Agent Interfaces
+
+```ts
+// groq-client.ts
+function callGroq(systemPrompt: string, userPrompt: string): Promise<string>
+
+// safety.ts
+interface SafetyAgentInput {
+  trade_id: string            // audit correlation only — not sent to Groq
+  initiator_id: string        // audit correlation only — not sent to Groq
+  listing_title: string
+  listing_description: string
+  agreed_terms: string | null
+}
+interface SafetyAgentOutput {
+  verdict: 'allow' | 'block' | 'review'
+  confidence: number                       // 0.0–1.0
+  reasoning: string
+  redacted_description: string | null      // PII replaced with [REDACTED], or null if verdict is 'allow'
+}
+async function runSafety(input: SafetyAgentInput): Promise<SafetyAgentOutput>
+
+// runner.ts
+interface AgentRunnerInput {
+  trade_id: string
+  initiator_id: string
+  listing_title: string
+  listing_description: string
+  agreed_terms: string | null
+}
+interface AgentRunnerResult {
+  safety: SafetyAgentOutput | null    // null if agent rejected
+  logistics: LogisticsData | null     // null if agent rejected or not yet run
+  vibe: number | null                 // null if agent rejected or not yet run
+  errors: Record<string, unknown>     // keyed by agent name on rejection
+}
+async function runAgents(input: AgentRunnerInput): Promise<AgentRunnerResult>
+```
+
 ## Project-Specific Do's and Don'ts
 
 ### 1. Agent Failures — use `Promise.allSettled`, not `Promise.all`
