@@ -17,7 +17,7 @@ vi.mock('../groq-client', () => ({
 }))
 
 // Import after mocking so the module picks up the mock.
-import { runSafety } from '../safety'
+import { runSafety, redactPii } from '../safety'
 import { callGroq } from '../groq-client'
 
 const mockCallGroq = vi.mocked(callGroq)
@@ -38,7 +38,34 @@ beforeEach(() => {
 })
 
 // ---------------------------------------------------------------------------
-// PII Redaction
+// redactPii — unit tests for the pre-pass helper (no Groq involved)
+// ---------------------------------------------------------------------------
+describe('redactPii', () => {
+  it.each([
+    ['parentheses format',  '(408) 555-0199'],
+    ['dash-separated',      '408-555-0199'  ],
+    ['dot-separated',       '408.555.0199'  ],
+    ['country code +1',     '+1 408-555-0199'],
+    ['digit-only 10',       '4085550199'    ],
+    ['digit-only 11',       '14085550199'   ],
+  ])('redacts phone number: %s', (_label, phone) => {
+    expect(redactPii(`Contact: ${phone}`)).not.toContain(phone)
+    expect(redactPii(`Contact: ${phone}`)).toContain('[REDACTED]')
+  })
+
+  it('redacts an email address', () => {
+    expect(redactPii('Email me at alice@example.com')).not.toContain('alice@example.com')
+    expect(redactPii('Email me at alice@example.com')).toContain('[REDACTED]')
+  })
+
+  it('leaves clean text unchanged', () => {
+    const clean = 'Nice bike, barely used, great condition.'
+    expect(redactPii(clean)).toBe(clean)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// runSafety — integration with mocked Groq
 // ---------------------------------------------------------------------------
 describe('PII redaction', () => {
   it('redacts a phone number to [REDACTED] in redacted_description', async () => {
@@ -63,5 +90,21 @@ describe('PII redaction', () => {
 
     expect(result.redacted_description).not.toContain(phoneNumber)
     expect(result.redacted_description).toContain('[REDACTED]')
+  })
+
+  it('strips PII from the prompt before calling Groq', async () => {
+    mockCallGroq.mockResolvedValueOnce(mockVerdict())
+
+    await runSafety({
+      trade_id: 'trade-002',
+      initiator_id: 'user-abc',
+      listing_title: 'Lawnmower',
+      listing_description: 'Call 408-555-0199 or email bob@example.com',
+      agreed_terms: null,
+    })
+
+    const promptSentToGroq = mockCallGroq.mock.calls[0][1] as string
+    expect(promptSentToGroq).not.toContain('408-555-0199')
+    expect(promptSentToGroq).not.toContain('bob@example.com')
   })
 })

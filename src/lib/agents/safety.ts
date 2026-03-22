@@ -43,14 +43,30 @@ const PARSE_ERROR_DEFAULT: SafetyAgentOutput = {
 // Strips known PII patterns before content is sent to Groq so that raw
 // personal data never leaves the server in a prompt.
 // The model is then asked to redact anything this pass may have missed.
+//
+// Each pattern is applied in order; earlier passes cannot re-introduce
+// PII that later passes would miss.
 // ---------------------------------------------------------------------------
 
-// Matches common North American phone formats:
-//   (408) 555-0199 | 408-555-0199 | 408.555.0199 | +14085550199
-const PHONE_RE = /(\+?1?\s?)?(\(?\d{3}\)?[\s.\-])(\d{3}[\s.\-]\d{4})/g
+const PII_PATTERNS: RegExp[] = [
+  // Phone numbers — North American formats:
+  //   +1 (408) 555-0199 | (408) 555-0199 | 408-555-0199
+  //   408.555.0199      | 4085550199     | +14085550199
+  /(\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]\d{4}/g,
+
+  // Phone numbers — digit-only runs (10 or 11 digits, no separators):
+  //   14085550199 | 4085550199
+  /\b(\+?1)?\d{10}\b/g,
+
+  // Email addresses
+  /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g,
+]
 
 export function redactPii(text: string): string {
-  return text.replace(PHONE_RE, '[REDACTED]')
+  return PII_PATTERNS.reduce(
+    (redacted, pattern) => redacted.replace(pattern, '[REDACTED]'),
+    text,
+  )
 }
 
 // ---------------------------------------------------------------------------
