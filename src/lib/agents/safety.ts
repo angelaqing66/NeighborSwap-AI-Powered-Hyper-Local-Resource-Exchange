@@ -38,6 +38,22 @@ const PARSE_ERROR_DEFAULT: SafetyAgentOutput = {
 }
 
 // ---------------------------------------------------------------------------
+// PII redaction — client-side pre-pass
+//
+// Strips known PII patterns before content is sent to Groq so that raw
+// personal data never leaves the server in a prompt.
+// The model is then asked to redact anything this pass may have missed.
+// ---------------------------------------------------------------------------
+
+// Matches common North American phone formats:
+//   (408) 555-0199 | 408-555-0199 | 408.555.0199 | +14085550199
+const PHONE_RE = /(\+?1?\s?)?(\(?\d{3}\)?[\s.\-])(\d{3}[\s.\-]\d{4})/g
+
+export function redactPii(text: string): string {
+  return text.replace(PHONE_RE, '[REDACTED]')
+}
+
+// ---------------------------------------------------------------------------
 // Prompts
 // ---------------------------------------------------------------------------
 
@@ -72,10 +88,10 @@ function buildUserPrompt(input: SafetyAgentInput): string {
   return `Listing title: ${input.listing_title}
 
 Listing description:
-${input.listing_description}
+${redactPii(input.listing_description)}
 
 Agreed trade terms:
-${terms}`
+${redactPii(terms)}`
 }
 
 // ---------------------------------------------------------------------------
