@@ -41,10 +41,8 @@ CREATE TABLE IF NOT EXISTS trades (
   initiator_id            UUID            NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
   counterparty_id         UUID            NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
 
-  -- Listing being exchanged.
-  -- FK to listings(id) added in a later migration once that table exists,
-  -- keeping migrations independently deployable.
-  listing_id              UUID            NOT NULL,
+  -- Item being exchanged.
+  item_id                 UUID            NOT NULL REFERENCES public.items(id) ON DELETE RESTRICT,
 
   -- Status
   status                  trade_status    NOT NULL DEFAULT 'pending_offer',
@@ -105,16 +103,16 @@ CREATE INDEX idx_trades_initiator_id_status
 CREATE INDEX idx_trades_counterparty_id_status
   ON trades (counterparty_id, status, created_at DESC);
 
--- "Are there active trades on this listing?"
-CREATE INDEX idx_trades_listing_id_status
-  ON trades (listing_id, status);
+-- "Are there active trades on this item?"
+CREATE INDEX idx_trades_item_id_status
+  ON trades (item_id, status);
 
--- At most one active or completed trade per listing.
+-- At most one active or completed trade per item.
 -- Multiple pending_offer / negotiating rows are allowed simultaneously
 -- (neighbors can express concurrent interest). Once a trade reaches
--- in_progress the listing is effectively locked.
-CREATE UNIQUE INDEX idx_trades_listing_one_active
-  ON trades (listing_id)
+-- in_progress the item is effectively locked.
+CREATE UNIQUE INDEX idx_trades_item_one_active
+  ON trades (item_id)
   WHERE status IN ('in_progress', 'completed');
 
 -- AI moderation review queue
@@ -194,8 +192,8 @@ CREATE POLICY "trades_no_user_delete"
 -- ----------------------------------------------------------------
 COMMENT ON TABLE  trades                       IS 'Full lifecycle of a resource exchange between two neighbors.';
 COMMENT ON COLUMN trades.initiator_id          IS 'User who created the trade offer.';
-COMMENT ON COLUMN trades.counterparty_id       IS 'User who owns the listing or accepts the barter.';
-COMMENT ON COLUMN trades.listing_id            IS 'The listing being exchanged. FK to listings(id) added in a later migration.';
+COMMENT ON COLUMN trades.counterparty_id       IS 'User who owns the item or accepts the barter.';
+COMMENT ON COLUMN trades.item_id               IS 'The item being exchanged.';
 COMMENT ON COLUMN trades.status                IS 'Current lifecycle phase (see trade_status enum).';
 COMMENT ON COLUMN trades.agreed_terms          IS 'Human-readable exchange description; frozen at accepted.';
 COMMENT ON COLUMN trades.moderation_verdict    IS 'Safety agent verdict: allow | block | review.';
