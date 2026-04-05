@@ -1,0 +1,183 @@
+================================================================================
+CS7180 Project 3 — Part 1: Custom Skill Session Log
+/add-feature skill — v1 → v2 iteration + 2 real task executions
+================================================================================
+
+DATE: 2026-04-04 / 2026-04-05
+SKILL FILE: .claude/skills/add-feature.md
+SKILL COMMAND: /add-feature <feature description>
+
+--------------------------------------------------------------------------------
+SKILL OVERVIEW
+--------------------------------------------------------------------------------
+The /add-feature skill defines a reusable end-to-end workflow for adding
+features to the NeighborSwap project. It enforces architecture conventions,
+ensures tests and type-safety, and produces a structured summary on every run.
+
+--------------------------------------------------------------------------------
+V1 — INITIAL SKILL (Steps 1–7)
+--------------------------------------------------------------------------------
+The original skill defined 7 ordered steps:
+
+  Step 1 — Understand the feature
+    Re-read CLAUDE.md and PRD.md. State what will be built in one sentence.
+
+  Step 2 — Locate affected files
+    Glob/Grep existing files. Read every file before modifying it.
+
+  Step 3 — Plan (no code yet)
+    List new files, modified files, DB migrations, new env vars.
+
+  Step 4 — Implement
+    Follow CLAUDE.md conventions: functional components, lucide-react icons,
+    Server Actions for all mutations, server-only Supabase client, strict TS.
+
+  Step 5 — Write tests
+    Co-located Vitest tests. Mock groq-client.ts. Never make live API calls.
+    LLM-as-judge eval tests for any AI agent work.
+
+  Step 6 — Type-check and lint
+    npx tsc --noEmit && npm run lint
+    Fix all errors; no @ts-ignore or as any.
+
+  Step 7 — Summarize
+    File diff summary, manual test steps, test results, outstanding TODOs.
+
+Constraints: no RLS bypass, no fetch('/api/...') for mutations, no direct
+Groq SDK imports in agents, no speculative features beyond the request.
+
+--------------------------------------------------------------------------------
+TASK 1 EXECUTION — /add-feature add sign-up function for users
+--------------------------------------------------------------------------------
+PROMPT: /add-feature add sign-up function for users
+
+WHAT WAS BUILT:
+  - src/lib/supabase/client.ts     Browser Supabase client (auth + real-time)
+  - src/lib/supabase/server.ts     Server Supabase client (Server Actions)
+  - src/types/user.ts              UserProfile, SignUpInput, AuthActionResult
+  - src/actions/auth.ts            signUpAction Server Action
+  - src/components/auth/SignUpForm.tsx  'use client' form (useActionState)
+  - src/app/(auth)/layout.tsx      Shared auth card layout
+  - src/app/(auth)/register/page.tsx        Sign-up page
+  - src/app/(auth)/register/success/page.tsx  Post-signup confirmation
+  - src/actions/__tests__/auth.test.ts  5 unit tests
+
+TEST RESULTS:
+  Tests  15 passed (15) — 2 test files
+  (10 pre-existing safety agent tests + 5 new sign-up tests)
+
+TYPE-CHECK: PASS (npx tsc --noEmit — 0 errors)
+
+LINT RESULT — FAILURE DISCOVERED:
+  $ npm run lint
+  > next lint
+  Error: Invalid project directory provided, no such directory: .../lint
+
+  Root cause: Next.js 16 removed `next lint` as a built-in CLI subcommand.
+  `lint` was being treated as an unknown directory argument.
+
+  The v1 skill surfaced this only at Step 6, after all feature code was
+  written. It was documented as a "pre-existing gap TODO" and deferred.
+
+  *** This failure directly motivated the v2 skill update. ***
+
+OUTSTANDING TODO AFTER TASK 1:
+  - npm run lint broken (next lint removed in Next.js 16)
+  - Email confirmation callback route not yet implemented
+  - Sign-in page /login referenced but not built
+
+--------------------------------------------------------------------------------
+V1 → V2 ITERATION — What changed and why
+--------------------------------------------------------------------------------
+USER FEEDBACK:
+  "Please update the skill — add a process to avoid the 'next.config.js
+   missing / npm run lint can't run' problem. If there is a pre-existing
+   gap or bug, please try to solve the gap or fix the bug and ask me to
+   verify."
+
+CHANGE MADE — Added Step 0 "Health-check the codebase":
+
+  Before any feature code is written, run all quality gates:
+    npx tsc --noEmit
+    npm run test
+    npm run lint
+
+  For each failure unrelated to the new feature:
+    1. Diagnose the root cause.
+    2. Fix it (no @ts-ignore / eslint-disable / as any).
+    3. Re-run to confirm the fix.
+    4. Ask the user to verify before proceeding:
+       "I found and fixed a pre-existing issue: <description>.
+        Please confirm this looks correct before I continue."
+
+  Exception: large-scope failures (missing external service, broken DB
+  migration) are documented in the final summary instead of blocking the run.
+
+ALSO FIXED (as Step 0 would have caught):
+  - Installed eslint + eslint-config-next
+  - Created eslint.config.mjs (ESLint 9 flat config)
+  - Updated package.json: "lint": "next lint" → "lint": "eslint src"
+  - Confirmed npm run lint now passes
+
+VERSION BUMP: frontmatter version: 1 → version: 2
+CHANGELOG: added to top of skill file documenting what changed and why
+
+--------------------------------------------------------------------------------
+TASK 2 EXECUTION — /add-feature log-in feature
+--------------------------------------------------------------------------------
+PROMPT: /add-feature log-in feature
+
+STEP 0 RESULT (new in v2):
+  $ npx tsc --noEmit   → PASS
+  $ npm run test       → 15/15 PASS
+  $ npm run lint       → PASS  (fixed in v2 iteration above)
+  No pre-existing failures. Proceeded directly to Step 1.
+
+WHAT WAS BUILT:
+  - src/actions/auth.ts            Added signInAction Server Action
+                                   (signUpAction already existed in this file)
+  - src/components/auth/LoginForm.tsx  'use client' form (useActionState)
+  - src/app/(auth)/login/page.tsx  Login page at /login
+  - src/actions/__tests__/auth.test.ts  Extended: +5 signInAction tests
+                                        (reused mock, added signInWithPassword)
+
+signInAction logic:
+  - Validates email (non-empty, trimmed) and password (non-empty)
+  - Calls supabase.auth.signInWithPassword({ email, password })
+  - On error  → returns { error: message } (displayed in form banner)
+  - On success → redirect('/')
+
+TEST RESULTS:
+  Tests  20 passed (20) — 2 test files
+  signInAction tests:
+    ✓ returns error when email is empty
+    ✓ returns error when password is empty
+    ✓ returns Supabase error message on invalid credentials
+    ✓ redirects to / on successful sign-in
+    ✓ trims whitespace from email before calling Supabase
+
+TYPE-CHECK: PASS (npx tsc --noEmit — 0 errors)
+LINT: PASS (npm run lint — 0 warnings)
+
+OUTSTANDING TODOS:
+  - Auth callback route (src/app/auth/callback/route.ts) needed if Supabase
+    email confirmation is enabled
+  - Middleware for protected routes not yet implemented
+  - Sign-out action not yet implemented
+
+--------------------------------------------------------------------------------
+SKILL EFFECTIVENESS SUMMARY
+--------------------------------------------------------------------------------
+The /add-feature skill successfully guided two complete feature
+implementations from empty directory to working, tested, type-safe code:
+
+  Task 1  sign-up   15 tests passing  all type-safe  lint fixed via v2
+  Task 2  login     20 tests passing  all type-safe  Step 0 caught 0 gaps
+
+The v1 → v2 iteration was directly motivated by a real failure observed
+during Task 1. The new Step 0 prevented the same class of problem from
+occurring silently during Task 2 and all future runs.
+
+================================================================================
+END OF SESSION LOG
+================================================================================
