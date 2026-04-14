@@ -194,3 +194,63 @@ async function runAgents(input: AgentRunnerInput): Promise<AgentRunnerResult>
 // Example: mocking Groq in Vitest
 vi.mock('@/lib/agents/groq-client', () => ({ callGroq: vi.fn() }))
 ```
+
+## CI/CD Pipeline
+
+Eight-gate pipeline defined in `.github/workflows/`:
+
+| # | Gate | Workflow | Blocks merge? |
+|---|------|----------|---------------|
+| 1 | Secrets detection (Gitleaks) | `ci.yml`, `pre-commit.yml` | Yes |
+| 2 | Lint + Prettier | `ci.yml` | Yes |
+| 3 | Type check (`tsc --noEmit`) | `ci.yml` | Yes |
+| 4 | Unit & integration tests (Vitest) | `ci.yml` | Yes |
+| 5 | E2E tests (Playwright) | `ci.yml` | Yes |
+| 6 | Dependency scan (`npm audit --audit-level=high`) | `ci.yml` | Yes |
+| 7 | SAST (CodeQL — security-and-quality queries) | `ci.yml` | Yes |
+| 8 | Build verification | `ci.yml` | Yes |
+
+**Additional automation:**
+- `ai-pr-review.yml` — Claude AI reviews every PR for security, architecture, and conventions
+- `preview-deploy.yml` — Vercel preview deploy on every PR (posts URL as comment)
+- `production-deploy.yml` — Vercel production deploy on merge to `main`
+
+**Local pre-commit hooks** (`.husky/pre-commit`): Gitleaks + lint-staged run before every commit.
+
+## Security
+
+### Definition of Done — Security Acceptance Criteria
+
+Every PR and feature must satisfy all of the following before merge:
+
+- [ ] No secrets, credentials, or API keys committed (Gitleaks passes)
+- [ ] `npm audit` reports no high or critical vulnerabilities
+- [ ] CodeQL SAST scan shows no new security alerts
+- [ ] RLS enabled on all new Supabase tables; no service role key in client-reachable code
+- [ ] PII stripped from all Groq prompts (only `trade_id` forwarded)
+- [ ] New Server Actions validate and sanitize all inputs at the boundary
+- [ ] No `any` types that could mask injection or type-confusion bugs
+- [ ] Claude AI PR review passes (no ❌ FAIL on security category)
+
+### OWASP Top 10 Awareness
+
+The following OWASP Top 10 (2021) risks are most relevant to NeighborSwap and must be considered during development and review:
+
+| # | Risk | NeighborSwap mitigations |
+|---|------|--------------------------|
+| A01 | Broken Access Control | Supabase RLS on all tables; Server Actions enforce auth; never expose service role key to client |
+| A02 | Cryptographic Failures | Supabase handles auth token encryption; no custom crypto; secrets in env vars only (never in code) |
+| A03 | Injection | Parameterized queries via Supabase SDK (no raw SQL from user input); Zod schema validation at action boundaries |
+| A04 | Insecure Design | Threat-model new features against this list; safety agent moderates listing content before publish |
+| A05 | Security Misconfiguration | RLS required on all tables; NEXT_PUBLIC_ prefix only for truly public values; CodeQL + npm audit in CI |
+| A06 | Vulnerable & Outdated Components | `npm audit` gate in CI blocks high/critical CVEs; Dependabot PRs reviewed weekly |
+| A07 | Identification & Auth Failures | Supabase Auth for all sessions; no custom session management; Server Actions revalidate auth on every request |
+| A08 | Software & Data Integrity Failures | Gitleaks pre-commit + CI; no `--no-verify` pushes; production deploy only from `main` after all gates pass |
+| A09 | Security Logging & Monitoring | Supabase logs all auth events; agent `trade_id` audit trail; Vercel request logs retained |
+| A10 | Server-Side Request Forgery | Groq calls made server-side only; no user-controlled URLs used in server fetch calls |
+
+**Key rules derived from OWASP:**
+- Never trust client input — validate with Zod in every Server Action.
+- Never construct DB queries from raw user strings — always use the Supabase SDK's parameterized interface.
+- Strip PII before forwarding content to external AI APIs (Groq).
+- Enforce authentication checks at the Server Action level, not only in UI guards.

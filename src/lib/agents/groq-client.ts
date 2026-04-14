@@ -13,14 +13,14 @@ import Groq from 'groq-sdk'
 if (typeof window !== 'undefined') {
   throw new Error(
     '[groq-client] This module must only be used on the server. ' +
-      'Do not import it inside a "use client" component.',
+      'Do not import it inside a "use client" component.'
   )
 }
 
 if (!process.env.GROQ_API_KEY) {
   throw new Error(
     '[groq-client] GROQ_API_KEY environment variable is not set. ' +
-      'Add it to .env.local (server-only — never prefix with NEXT_PUBLIC_).',
+      'Add it to .env.local (server-only — never prefix with NEXT_PUBLIC_).'
   )
 }
 
@@ -30,7 +30,7 @@ if (!process.env.GROQ_API_KEY) {
 export class GroqError extends Error {
   constructor(
     message: string,
-    public readonly cause?: unknown,
+    public readonly cause?: unknown
   ) {
     super(message)
     this.name = 'GroqError'
@@ -57,7 +57,7 @@ const DEFAULT_MODEL = 'llama3-8b-8192'
 export async function callGroq(
   systemPrompt: string,
   userPrompt: string,
-  model: string = DEFAULT_MODEL,
+  model: string = DEFAULT_MODEL
 ): Promise<string> {
   let completion: Groq.Chat.ChatCompletion
 

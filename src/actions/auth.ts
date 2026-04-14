@@ -20,17 +20,13 @@ import type { AuthActionResult } from '@/types/user'
 // ---------------------------------------------------------------------------
 export async function signUpAction(
   _prevState: AuthActionResult,
-  formData: FormData,
+  formData: FormData
 ): Promise<AuthActionResult> {
   const email = formData.get('email')
   const password = formData.get('password')
   const full_name = formData.get('full_name')
 
-  if (
-    typeof email !== 'string' ||
-    typeof password !== 'string' ||
-    typeof full_name !== 'string'
-  ) {
+  if (typeof email !== 'string' || typeof password !== 'string' || typeof full_name !== 'string') {
     return { error: 'Invalid form submission.' }
   }
 
@@ -73,7 +69,7 @@ export async function signUpAction(
 // ---------------------------------------------------------------------------
 export async function signInAction(
   _prevState: AuthActionResult,
-  formData: FormData,
+  formData: FormData
 ): Promise<AuthActionResult> {
   const email = formData.get('email')
   const password = formData.get('password')

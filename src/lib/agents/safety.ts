@@ -11,18 +11,18 @@ import type { ModerationVerdict } from '@/types/trades'
 // ---------------------------------------------------------------------------
 
 export interface SafetyAgentInput {
-  trade_id: string            // audit correlation only — never sent to Groq
-  initiator_id: string        // audit correlation only — never sent to Groq
+  trade_id: string // audit correlation only — never sent to Groq
+  initiator_id: string // audit correlation only — never sent to Groq
   listing_title: string
   listing_description: string
   agreed_terms: string | null
 }
 
 export interface SafetyAgentOutput {
-  verdict: ModerationVerdict           // 'allow' | 'block' | 'review'
-  confidence: number                   // 0.0–1.0
+  verdict: ModerationVerdict // 'allow' | 'block' | 'review'
+  confidence: number // 0.0–1.0
   reasoning: string
-  redacted_description: string | null  // PII replaced with [REDACTED]; null when verdict is 'allow'
+  redacted_description: string | null // PII replaced with [REDACTED]; null when verdict is 'allow'
 }
 
 // ---------------------------------------------------------------------------
@@ -63,10 +63,7 @@ const PII_PATTERNS: RegExp[] = [
 ]
 
 export function redactPii(text: string): string {
-  return PII_PATTERNS.reduce(
-    (redacted, pattern) => redacted.replace(pattern, '[REDACTED]'),
-    text,
-  )
+  return PII_PATTERNS.reduce((redacted, pattern) => redacted.replace(pattern, '[REDACTED]'), text)
 }
 
 // ---------------------------------------------------------------------------
@@ -121,7 +118,10 @@ function parseResponse(raw: string): SafetyAgentOutput {
 
   try {
     // Strip accidental markdown fences the model may add despite instructions
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+    const cleaned = raw
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/, '')
+      .trim()
     parsed = JSON.parse(cleaned)
   } catch {
     return PARSE_ERROR_DEFAULT
@@ -139,11 +139,7 @@ function parseResponse(raw: string): SafetyAgentOutput {
 
   const { verdict, confidence, reasoning, redacted_description } = parsed as Record<string, unknown>
 
-  if (
-    verdict !== 'allow' &&
-    verdict !== 'block' &&
-    verdict !== 'review'
-  ) {
+  if (verdict !== 'allow' && verdict !== 'block' && verdict !== 'review') {
     return PARSE_ERROR_DEFAULT
   }
 
@@ -159,8 +155,7 @@ function parseResponse(raw: string): SafetyAgentOutput {
     verdict,
     confidence,
     reasoning,
-    redacted_description:
-      typeof redacted_description === 'string' ? redacted_description : null,
+    redacted_description: typeof redacted_description === 'string' ? redacted_description : null,
   }
 }
 
@@ -174,10 +169,7 @@ export async function runSafety(input: SafetyAgentInput): Promise<SafetyAgentOut
     raw = await callGroq(SYSTEM_PROMPT, buildUserPrompt(input))
   } catch (err) {
     // Groq API failure: degrade to 'review' so a human can inspect the trade.
-    const message =
-      err instanceof GroqError
-        ? err.message
-        : 'Unknown error contacting Groq API'
+    const message = err instanceof GroqError ? err.message : 'Unknown error contacting Groq API'
 
     return {
       verdict: 'review',

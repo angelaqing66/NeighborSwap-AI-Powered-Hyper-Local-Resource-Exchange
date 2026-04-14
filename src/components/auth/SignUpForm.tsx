@@ -26,10 +26,7 @@ export default function SignUpForm() {
       )}
 
       <div>
-        <label
-          htmlFor="full_name"
-          className="mb-1 block text-sm font-medium text-gray-700"
-        >
+        <label htmlFor="full_name" className="mb-1 block text-sm font-medium text-gray-700">
           Full name
         </label>
         <input
@@ -44,10 +41,7 @@ export default function SignUpForm() {
       </div>
 
       <div>
-        <label
-          htmlFor="email"
-          className="mb-1 block text-sm font-medium text-gray-700"
-        >
+        <label htmlFor="email" className="mb-1 block text-sm font-medium text-gray-700">
           Email address
         </label>
         <input
@@ -62,10 +56,7 @@ export default function SignUpForm() {
       </div>
 
       <div>
-        <label
-          htmlFor="password"
-          className="mb-1 block text-sm font-medium text-gray-700"
-        >
+        <label htmlFor="password" className="mb-1 block text-sm font-medium text-gray-700">
           Password
         </label>
         <input

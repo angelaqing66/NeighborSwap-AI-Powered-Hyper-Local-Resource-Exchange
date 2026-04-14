@@ -1,0 +1,18 @@
+name: Pre-commit Security Check
+
+# This workflow mirrors what developers run locally via pre-commit hooks.
+# Runs on all branches to catch any push that bypassed local hooks.
+on:
+  push:
+
+jobs:
+  gitleaks:
+    name: Gitleaks Secrets Scan (all branches)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

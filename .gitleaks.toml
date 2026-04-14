@@ -1,0 +1,42 @@
+# Gitleaks configuration for NeighborSwap
+# Docs: https://github.com/gitleaks/gitleaks
+
+title = "NeighborSwap Gitleaks Config"
+
+[extend]
+# Extend the default ruleset
+useDefault = true
+
+[[rules]]
+id = "supabase-service-role-key"
+description = "Supabase service role key (never expose to client)"
+regex = '''(?i)supabase[_-]?service[_-]?role[_-]?key\s*=\s*["\']?[a-zA-Z0-9._-]{20,}'''
+tags = ["supabase", "service-role", "critical"]
+
+[[rules]]
+id = "groq-api-key"
+description = "Groq API key"
+regex = '''(?i)groq[_-]?api[_-]?key\s*=\s*["\']?gsk_[a-zA-Z0-9]{20,}'''
+tags = ["groq", "api-key"]
+
+[[rules]]
+id = "next-public-secret-leak"
+description = "Secret inadvertently prefixed with NEXT_PUBLIC_ (would expose to browser)"
+regex = '''NEXT_PUBLIC_(?:SERVICE_ROLE|SECRET|PRIVATE|GROQ_API)'''
+tags = ["nextjs", "secret-exposure"]
+
+[allowlist]
+description = "Global allowlist"
+paths = [
+  ".gitleaks.toml",
+  "*.test.ts",
+  "*.test.tsx",
+  "docs/",
+]
+regexes = [
+  # Placeholder values in docs/examples
+  "your[-_]?api[-_]?key[-_]?here",
+  "placeholder",
+  "example",
+  "<YOUR_",
+]

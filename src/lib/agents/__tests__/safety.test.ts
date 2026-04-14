@@ -9,7 +9,10 @@ import type { SafetyAgentOutput } from '../safety'
 vi.mock('../groq-client', () => ({
   callGroq: vi.fn(),
   GroqError: class GroqError extends Error {
-    constructor(message: string, public readonly cause?: unknown) {
+    constructor(
+      message: string,
+      public readonly cause?: unknown
+    ) {
       super(message)
       this.name = 'GroqError'
     }
@@ -42,12 +45,12 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 describe('redactPii', () => {
   it.each([
-    ['parentheses format',  '(408) 555-0199'],
-    ['dash-separated',      '408-555-0199'  ],
-    ['dot-separated',       '408.555.0199'  ],
-    ['country code +1',     '+1 408-555-0199'],
-    ['digit-only 10',       '4085550199'    ],
-    ['digit-only 11',       '14085550199'   ],
+    ['parentheses format', '(408) 555-0199'],
+    ['dash-separated', '408-555-0199'],
+    ['dot-separated', '408.555.0199'],
+    ['country code +1', '+1 408-555-0199'],
+    ['digit-only 10', '4085550199'],
+    ['digit-only 11', '14085550199'],
   ])('redacts phone number: %s', (_label, phone) => {
     expect(redactPii(`Contact: ${phone}`)).not.toContain(phone)
     expect(redactPii(`Contact: ${phone}`)).toContain('[REDACTED]')
@@ -77,7 +80,7 @@ describe('PII redaction', () => {
         confidence: 0.95,
         reasoning: 'Listing description contains a phone number.',
         redacted_description: `Call me at [REDACTED] to arrange pickup.`,
-      }),
+      })
     )
 
     const result = await runSafety({

@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Gate 1: Secrets detection (Gitleaks)
+if command -v gitleaks &> /dev/null; then
+  echo "Running Gitleaks secrets scan..."
+  gitleaks protect --staged --config .gitleaks.toml
+  if [ $? -ne 0 ]; then
+    echo "❌ Gitleaks found potential secrets. Commit blocked."
+    exit 1
+  fi
+else
+  echo "⚠️  Gitleaks not installed locally. Secrets scan will run in CI."
+  echo "   Install: https://github.com/gitleaks/gitleaks#installing"
+fi
+
+# Gate 2: Lint staged files
+npx lint-staged
+
+echo "✅ Pre-commit checks passed"

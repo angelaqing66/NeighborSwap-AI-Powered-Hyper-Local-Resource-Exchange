@@ -5,12 +5,12 @@
 // UserProfile — mirrors every column in public.users
 // ---------------------------------------------------------------------------
 export interface UserProfile {
-  id: string          // UUID, FK → auth.users.id
+  id: string // UUID, FK → auth.users.id
   full_name: string | null
   avatar_url: string | null
   trust_score: number // 0–100, default 50
-  created_at: string  // ISO-8601
-  updated_at: string  // ISO-8601
+  created_at: string // ISO-8601
+  updated_at: string // ISO-8601
 }
 
 // ---------------------------------------------------------------------------

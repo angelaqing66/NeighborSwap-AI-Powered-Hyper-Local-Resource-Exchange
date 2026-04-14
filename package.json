@@ -7,8 +7,23 @@
     "build": "next build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "lint": "eslint src",
-    "type-check": "tsc --noEmit"
+    "lint:fix": "eslint src --fix",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\" --ignore-unknown",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css,md}\" --ignore-unknown",
+    "type-check": "tsc --noEmit",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "src/**/*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "src/**/*.{js,jsx,json,css,md}": [
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.0",
@@ -23,12 +38,16 @@
     "tailwindcss": "^3.4.19"
   },
   "devDependencies": {
+    "@playwright/test": "^1.44.0",
     "@types/node": "^20.12.7",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.2.1",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.2",
+    "husky": "^9.0.11",
+    "lint-staged": "^15.2.2",
+    "prettier": "^3.2.5",
     "typescript": "^5.4.5",
     "vite-tsconfig-paths": "^4.3.2",
     "vitest": "^1.5.0"

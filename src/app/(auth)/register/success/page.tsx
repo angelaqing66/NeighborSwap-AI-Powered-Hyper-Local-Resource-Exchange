@@ -15,13 +15,10 @@ export default function RegisterSuccessPage() {
       <MailCheck className="h-12 w-12 text-green-500" aria-hidden />
       <h2 className="text-xl font-semibold text-gray-900">Check your email</h2>
       <p className="text-sm text-gray-600">
-        We sent a confirmation link to your email address. Click the link to
-        activate your account and start swapping with your neighbors.
+        We sent a confirmation link to your email address. Click the link to activate your account
+        and start swapping with your neighbors.
       </p>
-      <a
-        href="/login"
-        className="mt-2 text-sm font-medium text-green-600 hover:underline"
-      >
+      <a href="/login" className="mt-2 text-sm font-medium text-green-600 hover:underline">
         Back to sign in
       </a>
     </div>

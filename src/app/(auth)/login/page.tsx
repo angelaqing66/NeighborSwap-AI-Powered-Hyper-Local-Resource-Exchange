@@ -11,9 +11,7 @@ export const metadata: Metadata = {
 export default function LoginPage() {
   return (
     <>
-      <h2 className="mb-6 text-xl font-semibold text-gray-900">
-        Sign in to your account
-      </h2>
+      <h2 className="mb-6 text-xl font-semibold text-gray-900">Sign in to your account</h2>
       <LoginForm />
     </>
   )

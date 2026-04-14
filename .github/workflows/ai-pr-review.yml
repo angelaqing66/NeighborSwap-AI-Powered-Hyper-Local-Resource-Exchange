@@ -1,0 +1,52 @@
+name: AI PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  claude-review:
+    name: Claude AI Code Review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Claude PR Review
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Focus areas aligned with project conventions
+          direct_prompt: |
+            Review this pull request for the NeighborSwap project. Focus on:
+
+            1. **Security** (mandatory — fail if any found):
+               - No secrets, API keys, or credentials in code
+               - No service role key accessible from client-side code
+               - No RLS bypass patterns
+               - OWASP Top 10: injection, broken auth, XSS, IDOR, security misconfiguration
+               - PII must be stripped before passing content to Groq (only trade_id allowed)
+
+            2. **Architecture conventions**:
+               - DB mutations only in `actions/` Server Actions — not in Route Handlers
+               - Server Supabase client never imported in `'use client'` components
+               - Browser Supabase client only for Auth state and real-time subscriptions
+               - Agents must not access DB directly
+
+            3. **Agent conventions**:
+               - All Groq calls go through `lib/agents/groq-client.ts` only
+               - Agents use `Promise.allSettled` (never `Promise.all`) in runner.ts
+               - JSON parse failures return safe default, never throw
+               - Agent tests mock `groq-client.ts` — no live API calls
+
+            4. **Code quality**:
+               - TypeScript strict mode compliance — no `any` types
+               - Functional components only — no class components
+               - `lucide-react` for icons only
+               - No unnecessary abstractions or over-engineering
+
+            Provide a structured review with: ✅ PASS or ❌ FAIL verdict per category, specific line citations for issues, and concrete fix suggestions.

@@ -20,7 +20,7 @@ export async function createClient() {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options),
+              cookieStore.set(name, value, options)
             )
           } catch {
             // setAll is called from a Server Component — cookie mutations are
@@ -28,6 +28,6 @@ export async function createClient() {
           }
         },
       },
-    },
+    }
   )
 }

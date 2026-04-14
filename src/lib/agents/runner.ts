@@ -20,10 +20,10 @@ export interface AgentRunnerInput {
 }
 
 export interface AgentRunnerResult {
-  safety: SafetyAgentOutput | null  // null if the agent rejected
-  logistics: LogisticsData | null   // null — logistics agent not yet implemented
-  vibe: number | null               // null — vibe agent not yet implemented
-  errors: Record<string, unknown>   // keyed by agent name; populated on rejection
+  safety: SafetyAgentOutput | null // null if the agent rejected
+  logistics: LogisticsData | null // null — logistics agent not yet implemented
+  vibe: number | null // null — vibe agent not yet implemented
+  errors: Record<string, unknown> // keyed by agent name; populated on rejection
 }
 
 // ---------------------------------------------------------------------------

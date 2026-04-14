@@ -113,7 +113,7 @@ describe('signUpAction', () => {
       expect.objectContaining({
         email: 'user@example.com',
         options: { data: { full_name: 'Dave' } },
-      }),
+      })
     )
   })
 })
@@ -189,7 +189,7 @@ describe('signInAction', () => {
     await signInAction(prevState, fd)
 
     expect(mockSignInWithPassword).toHaveBeenCalledWith(
-      expect.objectContaining({ email: 'user@example.com' }),
+      expect.objectContaining({ email: 'user@example.com' })
     )
   })
 })
