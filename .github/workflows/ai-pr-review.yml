@@ -20,14 +20,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Skip if ANTHROPIC_API_KEY not configured
-        if: ${{ secrets.ANTHROPIC_API_KEY == '' }}
-        run: |
-          echo "ANTHROPIC_API_KEY secret is not set — skipping AI review."
-          echo "Add the secret at Settings → Secrets and variables → Actions."
-
       - name: Claude PR Review
-        if: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+        continue-on-error: true
         uses: anthropics/claude-code-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
