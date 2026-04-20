@@ -18,13 +18,12 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  // Start dev server automatically when not in CI
-  webServer: process.env.CI
-    ? undefined
-    : {
-        command: 'npm run dev',
-        url: 'http://localhost:3000',
-        reuseExistingServer: true,
-        timeout: 120_000,
-      },
+  // CI: serve the pre-built app with `next start` (build step runs first in the workflow).
+  // Local: use the dev server and reuse if already running.
+  webServer: {
+    command: process.env.CI ? 'npx next start' : 'npm run dev',
+    url: 'http://localhost:3000',
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+  },
 })
