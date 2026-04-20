@@ -28,10 +28,10 @@ tags = ["nextjs", "secret-exposure"]
 [allowlist]
 description = "Global allowlist"
 paths = [
-  ".gitleaks.toml",
-  "*.test.ts",
-  "*.test.tsx",
-  "docs/",
+  '''\.gitleaks\.toml''',
+  '''.*\.test\.ts$''',
+  '''.*\.test\.tsx$''',
+  '''^docs/''',
 ]
 regexes = [
   # Placeholder values in docs/examples
