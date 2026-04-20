@@ -17,3 +17,11 @@ out/
 # debug
 npm-debug.log*
 
+# vercel
+.vercel
+
+# test coverage
+coverage/
+
+# claude code
+.claude/
