@@ -4,9 +4,8 @@
 // Client component — renders the "Post an Item" form and wires it to the
 // createListingAction Server Action via React's useActionState.
 
-import { useActionState, useRef } from 'react'
+import { useActionState, useRef, useState, useEffect } from 'react'
 import { Loader2, Upload, X } from 'lucide-react'
-import { useState } from 'react'
 import { createListingAction } from '@/actions/listings'
 import type { ListingActionResult } from '@/types/listings'
 
@@ -17,6 +16,13 @@ export default function PostItemForm() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Revoke the blob URL when it changes or the component unmounts to prevent memory leaks.
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+    }
+  }, [previewUrl])
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) {
@@ -24,7 +30,8 @@ export default function PostItemForm() {
       return
     }
     const url = URL.createObjectURL(file)
-    setPreviewUrl(url)
+    // Validate the generated URL is a safe blob: scheme before rendering it in src.
+    setPreviewUrl(url.startsWith('blob:') ? url : null)
   }
 
   function clearPhoto() {
@@ -87,7 +94,7 @@ export default function PostItemForm() {
           <div className="relative inline-block">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={previewUrl}
+              src={previewUrl.startsWith('blob:') ? previewUrl : ''}
               alt="Preview"
               className="h-40 w-40 rounded-md object-cover border border-gray-200"
             />
