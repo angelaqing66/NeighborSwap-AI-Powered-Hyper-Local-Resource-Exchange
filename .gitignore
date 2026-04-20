@@ -23,5 +23,7 @@ npm-debug.log*
 # test coverage
 coverage/
 
-# claude code
-.claude/
+# claude code — ignore runtime/local files, keep skills and commands
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
+.claude/memory/
