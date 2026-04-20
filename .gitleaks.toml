@@ -32,10 +32,12 @@ paths = [
   '''.*\.test\.ts$''',
   '''.*\.test\.tsx$''',
   '''^docs/''',
+  '''\.env\.example$''',
 ]
 regexes = [
   # Placeholder values in docs/examples
   "your[-_]?api[-_]?key[-_]?here",
+  "your-.*-key-here",
   "placeholder",
   "example",
   "<YOUR_",
