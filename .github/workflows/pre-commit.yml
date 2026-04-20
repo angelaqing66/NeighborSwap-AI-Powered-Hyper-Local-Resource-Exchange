@@ -5,6 +5,9 @@ name: Pre-commit Security Check
 on:
   push:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   gitleaks:
     name: Gitleaks Secrets Scan (all branches)
