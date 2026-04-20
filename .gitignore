@@ -17,5 +17,3 @@ out/
 # debug
 npm-debug.log*
 
-# lock files (optional — remove if you want to commit package-lock.json)
-package-lock.json
