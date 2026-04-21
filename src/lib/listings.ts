@@ -14,7 +14,11 @@ export async function getListings(params: GetListingsParams): Promise<Listing[]>
   const status = params.status ?? 'available'
   const trimmed = params.search?.trim() ?? ''
 
-  let query = supabase.from('items').select('*').eq('status', status).order('created_at', { ascending: false })
+  let query = supabase
+    .from('items')
+    .select('*')
+    .eq('status', status)
+    .order('created_at', { ascending: false })
 
   if (trimmed.length > 0) {
     query = query.ilike('title', `%${trimmed}%`)
