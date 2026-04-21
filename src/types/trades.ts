@@ -26,6 +26,47 @@ export const TERMINAL_STATUSES = [
 export type TerminalTradeStatus = (typeof TERMINAL_STATUSES)[number]
 
 // ---------------------------------------------------------------------------
+// State machine — valid user-initiated transitions, enforced server-side
+// in updateTradeStatusAction and at the DB level via the
+// validate_trade_transition trigger.
+//
+// Agent-initiated transitions (accepted → flagged, accepted → scheduled)
+// are excluded here; those go through dedicated Server Actions.
+//
+// Maps to the 4 user-visible milestones from the PRD:
+//   INQUIRY phase  → pending_offer / negotiating
+//   REQUESTED      → accepted
+//   PICKED_UP      → in_progress
+//   RETURNED       → completed
+// ---------------------------------------------------------------------------
+export type TransitionRole = 'initiator' | 'counterparty'
+
+export interface ValidTransition {
+  next: TradeStatus
+  roles: TransitionRole[]
+}
+
+export const VALID_TRANSITIONS: Partial<Record<TradeStatus, ValidTransition[]>> = {
+  pending_offer: [
+    { next: 'negotiating', roles: ['counterparty'] },
+    { next: 'cancelled', roles: ['initiator', 'counterparty'] },
+  ],
+  negotiating: [
+    { next: 'accepted', roles: ['initiator', 'counterparty'] },
+    { next: 'cancelled', roles: ['initiator', 'counterparty'] },
+  ],
+  accepted: [
+    { next: 'in_progress', roles: ['initiator', 'counterparty'] },
+    { next: 'disputed', roles: ['initiator', 'counterparty'] },
+  ],
+  scheduled: [{ next: 'in_progress', roles: ['initiator', 'counterparty'] }],
+  in_progress: [
+    { next: 'completed', roles: ['initiator', 'counterparty'] },
+    { next: 'disputed', roles: ['initiator', 'counterparty'] },
+  ],
+}
+
+// ---------------------------------------------------------------------------
 // LogisticsData — typed shape of the logistics_data JSONB column.
 // Produced by src/lib/agents/logistics.ts.
 // ---------------------------------------------------------------------------
