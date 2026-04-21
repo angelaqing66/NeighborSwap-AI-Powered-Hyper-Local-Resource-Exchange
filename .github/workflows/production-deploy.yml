@@ -51,6 +51,28 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
 
+      # Sync server-only secrets from GitHub secrets → Vercel Production.
+      # These are never baked into the client bundle; they are only read by
+      # Server Actions and src/lib/agents/groq-client.ts at request time.
+      - name: Sync server-only secrets to Vercel (production)
+        run: |
+          if [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            vercel env rm SUPABASE_SERVICE_ROLE_KEY production --yes --token=${{ secrets.VERCEL_TOKEN }} 2>/dev/null || true
+            echo "$SUPABASE_SERVICE_ROLE_KEY" | vercel env add SUPABASE_SERVICE_ROLE_KEY production --token=${{ secrets.VERCEL_TOKEN }}
+          else
+            echo "WARNING: SUPABASE_SERVICE_ROLE_KEY not set — server-side DB operations will fail in production."
+          fi
+
+          if [ -n "$GROQ_API_KEY" ]; then
+            vercel env rm GROQ_API_KEY production --yes --token=${{ secrets.VERCEL_TOKEN }} 2>/dev/null || true
+            echo "$GROQ_API_KEY" | vercel env add GROQ_API_KEY production --token=${{ secrets.VERCEL_TOKEN }}
+          else
+            echo "WARNING: GROQ_API_KEY not set — AI agent pipeline will degrade gracefully in production."
+          fi
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
       - name: Build project (Vercel)
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
         env:
