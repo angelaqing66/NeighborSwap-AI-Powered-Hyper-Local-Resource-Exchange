@@ -62,8 +62,8 @@ export interface Trade {
   initiator_id: string // UUID → auth.users
   counterparty_id: string // UUID → auth.users
 
-  // Listing (FK to listings.id added in a later migration)
-  listing_id: string // UUID
+  // Item being exchanged (FK → public.items.id)
+  item_id: string // UUID
 
   // Status
   status: TradeStatus
@@ -101,7 +101,7 @@ export interface Trade {
 // ---------------------------------------------------------------------------
 
 /** Payload for creating a new trade offer (status defaults to 'pending_offer'). */
-export type CreateTradeInput = Pick<Trade, 'initiator_id' | 'counterparty_id' | 'listing_id'> & {
+export type CreateTradeInput = Pick<Trade, 'initiator_id' | 'counterparty_id' | 'item_id'> & {
   agreed_terms?: string
 }
 

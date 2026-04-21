@@ -36,11 +36,13 @@ export async function createTradeAction(
   const { data, error } = await supabase
     .from('trades')
     .insert({ initiator_id: user.id, counterparty_id, item_id, status: 'pending_offer' })
+    .select('id')
+    .single()
 
   if (error) return { error: 'Failed to create trade. Please try again.' }
 
-  const trade_id = (data as Array<{ id: string }> | null)?.[0]?.id
-  redirect('/trades')
+  const trade_id = (data as { id: string }).id
+  redirect(`/chat/${trade_id}`)
   return { error: null, trade_id }
 }
 

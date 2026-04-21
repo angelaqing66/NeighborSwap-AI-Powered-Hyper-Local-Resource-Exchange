@@ -2,9 +2,9 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import type { TradeStatus } from '@/types/trades'
+import type { TradeSidebarItem } from '@/app/(main)/chat/layout'
 
-const STATUS_LABELS: Record<TradeStatus, string> = {
+const STATUS_LABELS: Record<string, string> = {
   pending_offer: 'Pending offer',
   negotiating: 'Negotiating',
   accepted: 'Accepted',
@@ -14,11 +14,6 @@ const STATUS_LABELS: Record<TradeStatus, string> = {
   completed: 'Completed',
   cancelled: 'Cancelled',
   disputed: 'Disputed',
-}
-
-interface TradeSidebarItem {
-  id: string
-  status: TradeStatus
 }
 
 export default function TradeSidebar({ trades }: { trades: TradeSidebarItem[] }) {
@@ -54,9 +49,11 @@ export default function TradeSidebar({ trades }: { trades: TradeSidebarItem[] })
                   isActive ? 'text-green-700' : 'text-gray-800'
                 }`}
               >
-                #{trade.id.slice(0, 8).toUpperCase()}
+                {trade.item_title ?? `#${trade.id.slice(0, 8).toUpperCase()}`}
               </p>
-              <p className="mt-0.5 text-xs text-gray-400">{STATUS_LABELS[trade.status]}</p>
+              <p className="mt-0.5 text-xs text-gray-400">
+                {STATUS_LABELS[trade.status] ?? trade.status}
+              </p>
             </Link>
           </li>
         )

@@ -1,13 +1,14 @@
 // src/actions/__tests__/trades.test.ts
 // Unit tests for createTradeAction.
-// Written BEFORE implementation — TDD red phase.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 const mockGetUser = vi.fn()
-const mockInsert = vi.fn()
+const mockSingle = vi.fn()
+const mockSelect = vi.fn().mockReturnValue({ single: mockSingle })
+const mockInsert = vi.fn().mockReturnValue({ select: mockSelect })
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn().mockResolvedValue({
@@ -38,6 +39,7 @@ const prevState = { error: null }
 const AUTHED_USER = { id: 'user-initiator-123' }
 const ITEM_ID = 'item-abc-456'
 const COUNTERPARTY_ID = 'user-provider-789'
+const NEW_TRADE_ID = 'trade-new-1'
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -45,7 +47,7 @@ describe('createTradeAction', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetUser.mockResolvedValue({ data: { user: AUTHED_USER }, error: null })
-    mockInsert.mockResolvedValue({ data: [{ id: 'trade-new-1' }], error: null })
+    mockSingle.mockResolvedValue({ data: { id: NEW_TRADE_ID }, error: null })
   })
 
   // ── Auth ───────────────────────────────────────────────────────────────────
@@ -89,7 +91,7 @@ describe('createTradeAction', () => {
   // ── DB ─────────────────────────────────────────────────────────────────────
 
   it('returns error when DB insert fails', async () => {
-    mockInsert.mockResolvedValue({ data: null, error: { message: 'RLS violation' } })
+    mockSingle.mockResolvedValue({ data: null, error: { message: 'RLS violation' } })
 
     const fd = makeFormData({ item_id: ITEM_ID, counterparty_id: COUNTERPARTY_ID })
     const result = await createTradeAction(prevState, fd)
@@ -109,10 +111,10 @@ describe('createTradeAction', () => {
     expect(insertPayload.status).toBe('pending_offer')
   })
 
-  it('calls redirect to /trades on success', async () => {
+  it('redirects to /chat/[tradeId] on success', async () => {
     const fd = makeFormData({ item_id: ITEM_ID, counterparty_id: COUNTERPARTY_ID })
     await createTradeAction(prevState, fd)
 
-    expect(mockRedirect).toHaveBeenCalledWith('/trades')
+    expect(mockRedirect).toHaveBeenCalledWith(`/chat/${NEW_TRADE_ID}`)
   })
 })
