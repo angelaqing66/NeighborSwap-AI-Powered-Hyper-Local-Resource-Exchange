@@ -184,6 +184,61 @@ export async function updateTradeStatusAction(
   return { error: null }
 }
 
+export interface UpdateAgreedTermsResult {
+  error: string | null
+}
+
+/**
+ * Updates agreed_terms during the negotiation phase. Once a trade reaches
+ * 'accepted' the contract is locked and this action returns an error.
+ * The DB trigger trades_lock_agreed_terms provides a second enforcement layer.
+ */
+export async function updateAgreedTermsAction(
+  tradeId: string,
+  terms: string
+): Promise<UpdateAgreedTermsResult> {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated.' }
+
+  const trimmedTerms = terms.trim()
+  if (!trimmedTerms) return { error: 'Agreed terms cannot be empty.' }
+
+  const { data: trade } = await supabase
+    .from('trades')
+    .select('status, initiator_id, counterparty_id')
+    .eq('id', tradeId)
+    .single()
+
+  if (!trade) return { error: 'Trade not found.' }
+
+  const isParty = trade.initiator_id === user.id || trade.counterparty_id === user.id
+  if (!isParty) return { error: 'Not authorized.' }
+
+  const currentStatus = trade.status as TradeStatus
+  if (currentStatus !== 'pending_offer' && currentStatus !== 'negotiating') {
+    return { error: 'Agreed terms are locked once the contract is accepted.' }
+  }
+
+  const { error } = await supabase
+    .from('trades')
+    .update({ agreed_terms: trimmedTerms })
+    .eq('id', tradeId)
+
+  if (error) {
+    // 23514 = check_violation — DB trigger fires if status check was bypassed.
+    if (error.code === '23514') {
+      return { error: 'Agreed terms are locked once the contract is accepted.' }
+    }
+    return { error: `Failed to update agreed terms: ${error.message}` }
+  }
+
+  return { error: null }
+}
+
 // System event messages inserted into the chat when milestone transitions occur.
 // Keyed by the new status.
 const SYSTEM_EVENTS: Partial<Record<TradeStatus, { content: string; event_type: string }>> = {
