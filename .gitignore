@@ -20,6 +20,9 @@ npm-debug.log*
 # vercel
 .vercel
 
+# supabase local dev — generated; config.toml and migrations are checked in
+supabase/.temp
+
 # test coverage
 coverage/
 
