@@ -98,7 +98,7 @@ For redacted_description:
 
 function buildUserPrompt(input: SafetyAgentInput): string {
   const terms = input.agreed_terms ?? '(none provided)'
-  return `Listing title: ${input.listing_title}
+  return `Listing title: ${redactPii(input.listing_title)}
 
 Listing description:
 ${redactPii(input.listing_description)}
