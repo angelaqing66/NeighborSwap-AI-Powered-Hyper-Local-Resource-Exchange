@@ -56,12 +56,12 @@ export const VALID_TRANSITIONS: Partial<Record<TradeStatus, ValidTransition[]>> 
     { next: 'cancelled', roles: ['initiator', 'counterparty'] },
   ],
   accepted: [
-    { next: 'in_progress', roles: ['initiator', 'counterparty'] },
+    { next: 'in_progress', roles: ['initiator'] },
     { next: 'disputed', roles: ['initiator', 'counterparty'] },
   ],
-  scheduled: [{ next: 'in_progress', roles: ['initiator', 'counterparty'] }],
+  scheduled: [{ next: 'in_progress', roles: ['initiator'] }],
   in_progress: [
-    { next: 'completed', roles: ['initiator', 'counterparty'] },
+    { next: 'completed', roles: ['counterparty'] },
     { next: 'disputed', roles: ['initiator', 'counterparty'] },
   ],
 }
