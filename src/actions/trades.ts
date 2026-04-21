@@ -5,6 +5,9 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { emitToRoom } from '@/lib/socket/emitter'
+import { SOCKET_EVENTS } from '@/lib/socket'
+import type { TradeStatus } from '@/types/trades'
 
 export interface CreateTradeResult {
   error: string | null
@@ -39,4 +42,44 @@ export async function createTradeAction(
   const trade_id = (data as Array<{ id: string }> | null)?.[0]?.id
   redirect('/trades')
   return { error: null, trade_id }
+}
+
+export interface UpdateTradeStatusResult {
+  error: string | null
+}
+
+export async function updateTradeStatusAction(
+  tradeId: string,
+  status: TradeStatus
+): Promise<UpdateTradeStatusResult> {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated.' }
+
+  const { data: trade } = await supabase
+    .from('trades')
+    .select('initiator_id, counterparty_id')
+    .eq('id', tradeId)
+    .single()
+
+  if (!trade) return { error: 'Trade not found.' }
+  if (trade.initiator_id !== user.id && trade.counterparty_id !== user.id) {
+    return { error: 'Not authorized.' }
+  }
+
+  const updated_at = new Date().toISOString()
+  const { error } = await supabase.from('trades').update({ status, updated_at }).eq('id', tradeId)
+
+  if (error) return { error: 'Failed to update trade status.' }
+
+  emitToRoom(`trade:${tradeId}`, SOCKET_EVENTS.tradeStatus(tradeId), {
+    trade_id: tradeId,
+    status,
+    updated_at,
+  })
+
+  return { error: null }
 }
