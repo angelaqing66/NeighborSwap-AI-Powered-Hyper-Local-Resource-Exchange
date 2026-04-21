@@ -114,7 +114,7 @@ cp .env.local.example .env.local
 # Supabase — get these from your project settings → API
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key   # server-only, never expose
+SUPABASE_SERVICE_ROLE_KEY=<YOUR_SUPABASE_SERVICE_ROLE_KEY>   # server-only, never expose
 
 # Groq Cloud — https://console.groq.com
 GROQ_API_KEY=your-groq-key                        # server-only, never expose

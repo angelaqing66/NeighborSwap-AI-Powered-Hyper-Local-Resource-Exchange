@@ -27,6 +27,9 @@ tags = ["nextjs", "secret-exposure"]
 
 [allowlist]
 description = "Global allowlist"
+commits = [
+  "07e3c30dbe74238ad3da6b31408a9ea1ebcd68f2", # README placeholder matched supabase-service-role-key rule (false positive)
+]
 paths = [
   '''\.gitleaks\.toml''',
   '''.*\.test\.ts$''',
