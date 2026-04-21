@@ -8,67 +8,172 @@ import { getAvailableTransitions } from '../TradeStatusPanel'
 describe('getAvailableTransitions', () => {
   // ── pending_offer ──────────────────────────────────────────────────────────
 
-  it('pending_offer: counterparty can start negotiating or cancel', () => {
-    const transitions = getAvailableTransitions('pending_offer', false, true)
-    const nexts = transitions.map((t) => t.next)
+  it('pending_offer: counterparty can start inquiry or cancel', () => {
+    const nexts = getAvailableTransitions('pending_offer', false, true).map((t) => t.next)
     expect(nexts).toContain('negotiating')
     expect(nexts).toContain('cancelled')
   })
 
-  it('pending_offer: initiator can only cancel (not start negotiating)', () => {
-    const transitions = getAvailableTransitions('pending_offer', true, false)
-    const nexts = transitions.map((t) => t.next)
+  it('pending_offer: initiator can only cancel (not start inquiry)', () => {
+    const nexts = getAvailableTransitions('pending_offer', true, false).map((t) => t.next)
     expect(nexts).not.toContain('negotiating')
     expect(nexts).toContain('cancelled')
   })
 
-  it('pending_offer: negotiating transition is not flagged as danger', () => {
-    const transitions = getAvailableTransitions('pending_offer', false, true)
-    const negotiate = transitions.find((t) => t.next === 'negotiating')
-    expect(negotiate?.danger).toBe(false)
+  it('pending_offer: start inquiry button is labeled "Start Inquiry"', () => {
+    const t = getAvailableTransitions('pending_offer', false, true).find(
+      (x) => x.next === 'negotiating'
+    )
+    expect(t?.label).toBe('Start Inquiry')
   })
 
-  it('pending_offer: cancel transition is flagged as danger', () => {
-    const transitions = getAvailableTransitions('pending_offer', false, true)
-    const cancel = transitions.find((t) => t.next === 'cancelled')
-    expect(cancel?.danger).toBe(true)
+  it('pending_offer: start inquiry is not a danger action', () => {
+    const t = getAvailableTransitions('pending_offer', false, true).find(
+      (x) => x.next === 'negotiating'
+    )
+    expect(t?.danger).toBe(false)
+  })
+
+  it('pending_offer: start inquiry does not require confirmation', () => {
+    const t = getAvailableTransitions('pending_offer', false, true).find(
+      (x) => x.next === 'negotiating'
+    )
+    expect(t?.requiresConfirmation).toBe(false)
+  })
+
+  it('pending_offer: cancel is a danger action', () => {
+    const t = getAvailableTransitions('pending_offer', false, true).find(
+      (x) => x.next === 'cancelled'
+    )
+    expect(t?.danger).toBe(true)
+  })
+
+  it('pending_offer: cancel requires confirmation and a reason', () => {
+    const t = getAvailableTransitions('pending_offer', false, true).find(
+      (x) => x.next === 'cancelled'
+    )
+    expect(t?.requiresConfirmation).toBe(true)
+    expect(t?.requiresReason).toBe(true)
   })
 
   // ── negotiating ────────────────────────────────────────────────────────────
 
-  it('negotiating: both parties can accept or cancel', () => {
-    const asInitiator = getAvailableTransitions('negotiating', true, false)
-    const asCounterparty = getAvailableTransitions('negotiating', false, true)
-    expect(asInitiator.map((t) => t.next)).toContain('accepted')
-    expect(asCounterparty.map((t) => t.next)).toContain('accepted')
-    expect(asInitiator.map((t) => t.next)).toContain('cancelled')
-    expect(asCounterparty.map((t) => t.next)).toContain('cancelled')
+  it('negotiating: both parties can request swap or cancel', () => {
+    const asInitiator = getAvailableTransitions('negotiating', true, false).map((t) => t.next)
+    const asCounterparty = getAvailableTransitions('negotiating', false, true).map((t) => t.next)
+    expect(asInitiator).toContain('accepted')
+    expect(asCounterparty).toContain('accepted')
+    expect(asInitiator).toContain('cancelled')
+    expect(asCounterparty).toContain('cancelled')
+  })
+
+  it('negotiating: request swap button is labeled "Request Swap"', () => {
+    const t = getAvailableTransitions('negotiating', true, false).find((x) => x.next === 'accepted')
+    expect(t?.label).toBe('Request Swap')
+  })
+
+  it('negotiating: request swap does not require confirmation', () => {
+    const t = getAvailableTransitions('negotiating', true, false).find((x) => x.next === 'accepted')
+    expect(t?.requiresConfirmation).toBe(false)
   })
 
   // ── accepted ───────────────────────────────────────────────────────────────
 
-  it('accepted: both parties can mark in_progress or dispute', () => {
-    const transitions = getAvailableTransitions('accepted', true, false)
-    const nexts = transitions.map((t) => t.next)
+  it('accepted: both parties can confirm pickup or dispute', () => {
+    const nexts = getAvailableTransitions('accepted', true, false).map((t) => t.next)
     expect(nexts).toContain('in_progress')
     expect(nexts).toContain('disputed')
   })
 
+  it('accepted: confirm pickup button is labeled "Confirm Pickup"', () => {
+    const t = getAvailableTransitions('accepted', true, false).find((x) => x.next === 'in_progress')
+    expect(t?.label).toBe('Confirm Pickup')
+  })
+
+  it('accepted: confirm pickup requires confirmation (possession transfer)', () => {
+    const t = getAvailableTransitions('accepted', true, false).find((x) => x.next === 'in_progress')
+    expect(t?.requiresConfirmation).toBe(true)
+  })
+
+  it('accepted: confirm pickup is not a danger action', () => {
+    const t = getAvailableTransitions('accepted', true, false).find((x) => x.next === 'in_progress')
+    expect(t?.danger).toBe(false)
+  })
+
+  it('accepted: dispute is a danger action that requires confirmation and a reason', () => {
+    const t = getAvailableTransitions('accepted', true, false).find((x) => x.next === 'disputed')
+    expect(t?.danger).toBe(true)
+    expect(t?.requiresConfirmation).toBe(true)
+    expect(t?.requiresReason).toBe(true)
+  })
+
+  it('accepted: confirm pickup does not require a reason', () => {
+    const t = getAvailableTransitions('accepted', true, false).find((x) => x.next === 'in_progress')
+    expect(t?.requiresReason).toBe(false)
+  })
+
+  // ── scheduled ─────────────────────────────────────────────────────────────
+
+  it('scheduled: both parties can confirm pickup', () => {
+    const nexts = getAvailableTransitions('scheduled', true, false).map((t) => t.next)
+    expect(nexts).toContain('in_progress')
+  })
+
+  it('scheduled: confirm pickup requires confirmation', () => {
+    const t = getAvailableTransitions('scheduled', true, false).find(
+      (x) => x.next === 'in_progress'
+    )
+    expect(t?.requiresConfirmation).toBe(true)
+  })
+
   // ── in_progress ────────────────────────────────────────────────────────────
 
-  it('in_progress: both parties can complete or dispute', () => {
-    const transitions = getAvailableTransitions('in_progress', true, false)
-    const nexts = transitions.map((t) => t.next)
+  it('in_progress: both parties can confirm return or dispute', () => {
+    const nexts = getAvailableTransitions('in_progress', true, false).map((t) => t.next)
     expect(nexts).toContain('completed')
     expect(nexts).toContain('disputed')
   })
 
-  it('in_progress: complete is not danger, dispute is danger', () => {
-    const transitions = getAvailableTransitions('in_progress', true, false)
-    const complete = transitions.find((t) => t.next === 'completed')
-    const dispute = transitions.find((t) => t.next === 'disputed')
-    expect(complete?.danger).toBe(false)
-    expect(dispute?.danger).toBe(true)
+  it('in_progress: confirm return button is labeled "Confirm Return"', () => {
+    const t = getAvailableTransitions('in_progress', true, false).find(
+      (x) => x.next === 'completed'
+    )
+    expect(t?.label).toBe('Confirm Return')
+  })
+
+  it('in_progress: confirm return requires confirmation (possession transfer)', () => {
+    const t = getAvailableTransitions('in_progress', true, false).find(
+      (x) => x.next === 'completed'
+    )
+    expect(t?.requiresConfirmation).toBe(true)
+  })
+
+  it('in_progress: confirm return is not a danger action', () => {
+    const t = getAvailableTransitions('in_progress', true, false).find(
+      (x) => x.next === 'completed'
+    )
+    expect(t?.danger).toBe(false)
+  })
+
+  it('in_progress: confirm return does not require a reason', () => {
+    const t = getAvailableTransitions('in_progress', true, false).find(
+      (x) => x.next === 'completed'
+    )
+    expect(t?.requiresReason).toBe(false)
+  })
+
+  it('in_progress: dispute requires confirmation and a reason', () => {
+    const t = getAvailableTransitions('in_progress', true, false).find((x) => x.next === 'disputed')
+    expect(t?.requiresConfirmation).toBe(true)
+    expect(t?.requiresReason).toBe(true)
+  })
+
+  it('negotiating: cancel requires confirmation and a reason', () => {
+    const t = getAvailableTransitions('negotiating', true, false).find(
+      (x) => x.next === 'cancelled'
+    )
+    expect(t?.requiresConfirmation).toBe(true)
+    expect(t?.requiresReason).toBe(true)
   })
 
   // ── terminal statuses ──────────────────────────────────────────────────────

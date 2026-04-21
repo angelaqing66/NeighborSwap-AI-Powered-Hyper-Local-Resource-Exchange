@@ -34,6 +34,7 @@ export function useChat(tradeId: string, initialMessages: Message[] = []): Messa
             trade_id: payload.trade_id,
             sender_id: payload.sender_id,
             content: payload.content,
+            event_type: payload.event_type ?? null,
             sent_at: payload.sent_at,
             created_at: payload.sent_at,
           },

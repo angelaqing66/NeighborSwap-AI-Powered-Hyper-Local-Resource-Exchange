@@ -6,6 +6,7 @@ export interface Message {
   trade_id: string
   sender_id: string
   content: string
+  event_type: string | null // null = regular chat message; 'status:<state>' = system event
   sent_at: string // ISO-8601
   created_at: string // ISO-8601
 }

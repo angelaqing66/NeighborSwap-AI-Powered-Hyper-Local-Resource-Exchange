@@ -1,11 +1,29 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { CheckCircle, Package, XCircle, AlertTriangle } from 'lucide-react'
 import type { Message } from '@/types/messages'
 
 interface MessageListProps {
   messages: Message[]
   currentUserId: string
+}
+
+const EVENT_CONFIG: Record<string, { label: string; Icon: React.ElementType; color: string }> = {
+  'status:accepted': { label: 'Deal accepted', Icon: CheckCircle, color: 'text-green-600' },
+  'status:in_progress': { label: 'Pickup confirmed', Icon: Package, color: 'text-purple-600' },
+  'status:completed': { label: 'Return confirmed', Icon: CheckCircle, color: 'text-blue-600' },
+  'status:cancelled': { label: 'Trade cancelled', Icon: XCircle, color: 'text-gray-500' },
+  'status:disputed': { label: 'Dispute raised', Icon: AlertTriangle, color: 'text-orange-600' },
+}
+
+// First-person labels when the current user performed the action.
+const MY_EVENT_LABELS: Record<string, string> = {
+  'status:accepted': 'You accepted the deal',
+  'status:in_progress': 'You confirmed pickup',
+  'status:completed': 'You confirmed return',
+  'status:cancelled': 'You cancelled the trade',
+  'status:disputed': 'You raised a dispute',
 }
 
 export default function MessageList({ messages, currentUserId }: MessageListProps) {
@@ -26,11 +44,41 @@ export default function MessageList({ messages, currentUserId }: MessageListProp
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {messages.map((msg) => {
-        const isMine = msg.sender_id === currentUserId
         const time = new Date(msg.sent_at).toLocaleTimeString(undefined, {
           hour: '2-digit',
           minute: '2-digit',
         })
+
+        // System event: render as a centered milestone card
+        if (msg.event_type) {
+          const cfg = EVENT_CONFIG[msg.event_type]
+          const EventIcon = cfg?.Icon ?? CheckCircle
+          const eventColor = cfg?.color ?? 'text-gray-500'
+          const isMyEvent = msg.sender_id === currentUserId
+
+          // When the stored content includes a reason (e.g. "Trade cancelled: reason"),
+          // show it as-is for both parties. Otherwise, use first-person for the sender.
+          const hasReason = cfg != null && msg.content !== cfg.label
+          const displayLabel = hasReason
+            ? msg.content
+            : isMyEvent
+              ? (MY_EVENT_LABELS[msg.event_type] ?? msg.content)
+              : (cfg?.label ?? msg.content)
+
+          return (
+            <div key={msg.id} className="flex justify-center py-1">
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-500">
+                <EventIcon className={`h-3 w-3 shrink-0 ${eventColor}`} aria-hidden />
+                <span className="font-medium">{displayLabel}</span>
+                <span aria-hidden>·</span>
+                <time dateTime={msg.sent_at}>{time}</time>
+              </div>
+            </div>
+          )
+        }
+
+        // Regular chat bubble
+        const isMine = msg.sender_id === currentUserId
         return (
           <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
             <div
