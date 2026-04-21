@@ -102,7 +102,17 @@ export async function updateTradeStatusAction(
 
   const { error } = await supabase.from('trades').update(updatePayload).eq('id', tradeId)
 
-  if (error) return { error: 'Failed to update trade status.' }
+  if (error) {
+    console.error('[updateTradeStatusAction] trades update failed', {
+      tradeId,
+      newStatus,
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    })
+    return { error: `Failed to update trade status: ${error.message}` }
+  }
 
   emitToRoom(`trade:${tradeId}`, SOCKET_EVENTS.tradeStatus(tradeId), {
     trade_id: tradeId,
@@ -117,13 +127,21 @@ export async function updateTradeStatusAction(
     // Append the user-supplied reason (if any) so it appears in the chat card.
     const content = trimmedReason ? `${systemEvent.content}: ${trimmedReason}` : systemEvent.content
 
-    await supabase.from('messages').insert({
+    const { error: msgError } = await supabase.from('messages').insert({
       trade_id: tradeId,
       sender_id: user.id,
       content,
       event_type: systemEvent.event_type,
       sent_at: now,
     })
+    if (msgError) {
+      console.error('[updateTradeStatusAction] system event insert failed', {
+        tradeId,
+        newStatus,
+        code: msgError.code,
+        message: msgError.message,
+      })
+    }
 
     emitToRoom(`trade:${tradeId}`, SOCKET_EVENTS.chatMessage(tradeId), {
       trade_id: tradeId,

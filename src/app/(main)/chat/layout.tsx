@@ -21,13 +21,15 @@ export default async function ChatLayout({ children }: { children: React.ReactNo
   if (!user) redirect('/login')
 
   // Join items table to get listing title for each trade
-  const { data: trades } = await supabase
+  const { data: trades, error: tradesError } = await supabase
     .from('trades')
     .select('id, status, item_id, items!item_id(title)')
     .or(`initiator_id.eq.${user.id},counterparty_id.eq.${user.id}`)
-    .not('status', 'in', '("completed","cancelled")')
+    .not('status', 'in', '(completed,cancelled)')
     .order('updated_at', { ascending: false })
     .limit(30)
+
+  if (tradesError) console.error('[ChatLayout] trades sidebar fetch error', tradesError)
 
   // Supabase returns the joined relation as an array for FK-based selects
   type RawTrade = Pick<Trade, 'id' | 'status' | 'item_id'> & {

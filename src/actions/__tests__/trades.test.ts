@@ -242,16 +242,30 @@ describe('updateTradeStatusAction', () => {
     expect(result.error).toBeNull()
   })
 
-  it('allows both parties to confirm pickup from accepted', async () => {
+  it('allows only the borrower (initiator) to confirm pickup from accepted', async () => {
     mockFetchSingle.mockResolvedValue({ data: makeTrade('accepted'), error: null })
     const result = await updateTradeStatusAction(TRADE_ID, 'in_progress')
     expect(result.error).toBeNull()
   })
 
-  it('allows both parties to confirm return from in_progress', async () => {
+  it('does not allow the lender (counterparty) to confirm pickup from accepted', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: COUNTERPARTY_ID } } })
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('accepted'), error: null })
+    const result = await updateTradeStatusAction(TRADE_ID, 'in_progress')
+    expect(result.error).toMatch(/initiator/)
+  })
+
+  it('allows only the lender (counterparty) to confirm return from in_progress', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: COUNTERPARTY_ID } } })
     mockFetchSingle.mockResolvedValue({ data: makeTrade('in_progress'), error: null })
     const result = await updateTradeStatusAction(TRADE_ID, 'completed')
     expect(result.error).toBeNull()
+  })
+
+  it('does not allow the borrower (initiator) to confirm return from in_progress', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('in_progress'), error: null })
+    const result = await updateTradeStatusAction(TRADE_ID, 'completed')
+    expect(result.error).toMatch(/counterparty/)
   })
 
   it('allows both parties to dispute from in_progress', async () => {
@@ -269,6 +283,7 @@ describe('updateTradeStatusAction', () => {
   })
 
   it('sets completed_at when transitioning to completed', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: COUNTERPARTY_ID } } })
     mockFetchSingle.mockResolvedValue({ data: makeTrade('in_progress'), error: null })
     await updateTradeStatusAction(TRADE_ID, 'completed')
     const payload = mockUpdate.mock.calls[0][0] as Record<string, unknown>
@@ -345,6 +360,7 @@ describe('updateTradeStatusAction', () => {
   })
 
   it('inserts a system event message when confirming return (completed)', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: COUNTERPARTY_ID } } })
     mockFetchSingle.mockResolvedValue({ data: makeTrade('in_progress'), error: null })
     await updateTradeStatusAction(TRADE_ID, 'completed')
     expect(mockMessageInsert).toHaveBeenCalledOnce()

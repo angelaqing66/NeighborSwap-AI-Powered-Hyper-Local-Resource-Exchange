@@ -79,9 +79,19 @@ describe('getAvailableTransitions', () => {
 
   // ── accepted ───────────────────────────────────────────────────────────────
 
-  it('accepted: both parties can confirm pickup or dispute', () => {
+  it('accepted: initiator (borrower) can confirm pickup and dispute', () => {
     const nexts = getAvailableTransitions('accepted', true, false).map((t) => t.next)
     expect(nexts).toContain('in_progress')
+    expect(nexts).toContain('disputed')
+  })
+
+  it('accepted: counterparty (lender) cannot confirm pickup', () => {
+    const nexts = getAvailableTransitions('accepted', false, true).map((t) => t.next)
+    expect(nexts).not.toContain('in_progress')
+  })
+
+  it('accepted: counterparty (lender) can still dispute', () => {
+    const nexts = getAvailableTransitions('accepted', false, true).map((t) => t.next)
     expect(nexts).toContain('disputed')
   })
 
@@ -114,9 +124,14 @@ describe('getAvailableTransitions', () => {
 
   // ── scheduled ─────────────────────────────────────────────────────────────
 
-  it('scheduled: both parties can confirm pickup', () => {
+  it('scheduled: initiator (borrower) can confirm pickup', () => {
     const nexts = getAvailableTransitions('scheduled', true, false).map((t) => t.next)
     expect(nexts).toContain('in_progress')
+  })
+
+  it('scheduled: counterparty (lender) cannot confirm pickup', () => {
+    const nexts = getAvailableTransitions('scheduled', false, true).map((t) => t.next)
+    expect(nexts).not.toContain('in_progress')
   })
 
   it('scheduled: confirm pickup requires confirmation', () => {
@@ -128,35 +143,46 @@ describe('getAvailableTransitions', () => {
 
   // ── in_progress ────────────────────────────────────────────────────────────
 
-  it('in_progress: both parties can confirm return or dispute', () => {
-    const nexts = getAvailableTransitions('in_progress', true, false).map((t) => t.next)
+  it('in_progress: counterparty (lender) can confirm return', () => {
+    const nexts = getAvailableTransitions('in_progress', false, true).map((t) => t.next)
     expect(nexts).toContain('completed')
-    expect(nexts).toContain('disputed')
+  })
+
+  it('in_progress: initiator (borrower) cannot confirm return', () => {
+    const nexts = getAvailableTransitions('in_progress', true, false).map((t) => t.next)
+    expect(nexts).not.toContain('completed')
+  })
+
+  it('in_progress: both parties can dispute', () => {
+    const asInitiator = getAvailableTransitions('in_progress', true, false).map((t) => t.next)
+    const asCounterparty = getAvailableTransitions('in_progress', false, true).map((t) => t.next)
+    expect(asInitiator).toContain('disputed')
+    expect(asCounterparty).toContain('disputed')
   })
 
   it('in_progress: confirm return button is labeled "Confirm Return"', () => {
-    const t = getAvailableTransitions('in_progress', true, false).find(
+    const t = getAvailableTransitions('in_progress', false, true).find(
       (x) => x.next === 'completed'
     )
     expect(t?.label).toBe('Confirm Return')
   })
 
   it('in_progress: confirm return requires confirmation (possession transfer)', () => {
-    const t = getAvailableTransitions('in_progress', true, false).find(
+    const t = getAvailableTransitions('in_progress', false, true).find(
       (x) => x.next === 'completed'
     )
     expect(t?.requiresConfirmation).toBe(true)
   })
 
   it('in_progress: confirm return is not a danger action', () => {
-    const t = getAvailableTransitions('in_progress', true, false).find(
+    const t = getAvailableTransitions('in_progress', false, true).find(
       (x) => x.next === 'completed'
     )
     expect(t?.danger).toBe(false)
   })
 
   it('in_progress: confirm return does not require a reason', () => {
-    const t = getAvailableTransitions('in_progress', true, false).find(
+    const t = getAvailableTransitions('in_progress', false, true).find(
       (x) => x.next === 'completed'
     )
     expect(t?.requiresReason).toBe(false)
