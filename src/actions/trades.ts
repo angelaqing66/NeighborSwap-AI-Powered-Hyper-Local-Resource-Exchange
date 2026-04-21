@@ -17,7 +17,9 @@ export async function createTradeAction(
 ): Promise<CreateTradeResult> {
   const supabase = await createClient()
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
   if (!user) return { error: 'You must be signed in to request a swap.' }
 
   const item_id = formData.get('item_id')?.toString().trim() ?? ''
