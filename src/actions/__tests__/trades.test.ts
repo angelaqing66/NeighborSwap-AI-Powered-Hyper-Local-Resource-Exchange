@@ -53,7 +53,8 @@ vi.mock('@/lib/socket/emitter', () => ({ emitToRoom: mockEmitToRoom }))
 vi.mock('next/navigation', () => ({ redirect: mockRedirect }))
 
 // Lazy import AFTER mocks are hoisted
-const { createTradeAction, updateTradeStatusAction } = await import('../trades')
+const { createTradeAction, updateTradeStatusAction, updateAgreedTermsAction } =
+  await import('../trades')
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -506,5 +507,140 @@ describe('updateTradeStatusAction', () => {
     expect(payload.cancellation_reason).toBeUndefined()
     const msgPayload = mockMessageInsert.mock.calls[0][0] as Record<string, unknown>
     expect(msgPayload.content).toBe('Trade cancelled')
+  })
+})
+
+// ── updateAgreedTermsAction ───────────────────────────────────────────────────
+
+describe('updateAgreedTermsAction', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetUser.mockResolvedValue({ data: { user: { id: INITIATOR_ID } } })
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('negotiating'), error: null })
+    mockUpdateEq.mockResolvedValue({ error: null })
+  })
+
+  // ── Auth ────────────────────────────────────────────────────────────────────
+
+  it('returns error when not authenticated', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null } })
+    const result = await updateAgreedTermsAction(TRADE_ID, 'Borrow drill for 2 days')
+    expect(result.error).toMatch(/not authenticated/i)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  // ── Input validation ────────────────────────────────────────────────────────
+
+  it('returns error when terms is empty string', async () => {
+    const result = await updateAgreedTermsAction(TRADE_ID, '')
+    expect(result.error).toMatch(/cannot be empty/i)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('returns error when terms is whitespace-only', async () => {
+    const result = await updateAgreedTermsAction(TRADE_ID, '   ')
+    expect(result.error).toMatch(/cannot be empty/i)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  // ── Trade lookup ────────────────────────────────────────────────────────────
+
+  it('returns error when trade is not found', async () => {
+    mockFetchSingle.mockResolvedValue({ data: null, error: { message: 'not found' } })
+    const result = await updateAgreedTermsAction(TRADE_ID, 'Borrow drill for 2 days')
+    expect(result.error).toMatch(/trade not found/i)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('returns error when user is not a party to the trade', async () => {
+    mockFetchSingle.mockResolvedValue({
+      data: { status: 'negotiating', initiator_id: 'other-1', counterparty_id: 'other-2' },
+      error: null,
+    })
+    const result = await updateAgreedTermsAction(TRADE_ID, 'Borrow drill for 2 days')
+    expect(result.error).toMatch(/not authorized/i)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  // ── Contract lock enforcement ───────────────────────────────────────────────
+
+  it('returns lock error when trade is accepted (contract locked)', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('accepted'), error: null })
+    const result = await updateAgreedTermsAction(TRADE_ID, 'Different terms')
+    expect(result.error).toMatch(/locked/i)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('returns lock error when trade is in_progress', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('in_progress'), error: null })
+    const result = await updateAgreedTermsAction(TRADE_ID, 'Different terms')
+    expect(result.error).toMatch(/locked/i)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('returns lock error when trade is completed (terminal)', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('completed'), error: null })
+    const result = await updateAgreedTermsAction(TRADE_ID, 'Different terms')
+    expect(result.error).toMatch(/locked/i)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('returns lock error when trade is cancelled (terminal)', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('cancelled'), error: null })
+    const result = await updateAgreedTermsAction(TRADE_ID, 'Different terms')
+    expect(result.error).toMatch(/locked/i)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  // ── Mutable phases ──────────────────────────────────────────────────────────
+
+  it('allows terms update during negotiating phase', async () => {
+    const result = await updateAgreedTermsAction(TRADE_ID, 'Borrow drill for 2 days')
+    expect(result.error).toBeNull()
+    expect(mockUpdate).toHaveBeenCalledOnce()
+  })
+
+  it('allows terms update during pending_offer phase', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('pending_offer'), error: null })
+    const result = await updateAgreedTermsAction(TRADE_ID, 'Borrow drill for 2 days')
+    expect(result.error).toBeNull()
+    expect(mockUpdate).toHaveBeenCalledOnce()
+  })
+
+  it('allows counterparty to update terms during negotiating', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: COUNTERPARTY_ID } } })
+    const result = await updateAgreedTermsAction(TRADE_ID, 'Revised terms from counterparty')
+    expect(result.error).toBeNull()
+  })
+
+  // ── DB payload ──────────────────────────────────────────────────────────────
+
+  it('writes trimmed terms to the DB update payload', async () => {
+    await updateAgreedTermsAction(TRADE_ID, '  Borrow drill for 2 days  ')
+    const payload = mockUpdate.mock.calls[0][0] as Record<string, unknown>
+    expect(payload.agreed_terms).toBe('Borrow drill for 2 days')
+  })
+
+  it('scopes the update to the correct trade row', async () => {
+    await updateAgreedTermsAction(TRADE_ID, 'Borrow drill for 2 days')
+    expect(mockUpdateEq).toHaveBeenCalledWith('id', TRADE_ID)
+  })
+
+  // ── DB-level check_violation (trigger fires) ────────────────────────────────
+
+  it('maps 23514 check_violation to the locked error message', async () => {
+    mockUpdateEq.mockResolvedValue({
+      error: { code: '23514', message: 'agreed_terms is locked once the contract is accepted' },
+    })
+    const result = await updateAgreedTermsAction(TRADE_ID, 'Borrow drill for 2 days')
+    expect(result.error).toMatch(/locked/i)
+  })
+
+  // ── Generic DB failure ──────────────────────────────────────────────────────
+
+  it('returns generic error when DB fails for other reasons', async () => {
+    mockUpdateEq.mockResolvedValue({ error: { code: '42501', message: 'permission denied' } })
+    const result = await updateAgreedTermsAction(TRADE_ID, 'Borrow drill for 2 days')
+    expect(result.error).toMatch(/failed to update agreed terms/i)
   })
 })
