@@ -3,12 +3,15 @@
 import { useState, useTransition } from 'react'
 import { Send } from 'lucide-react'
 import { sendMessageAction } from '@/actions/messages'
+import { TERMINAL_STATUSES } from '@/types/trades'
+import type { TradeStatus } from '@/types/trades'
 
 interface MessageFormProps {
   tradeId: string
+  tradeStatus: TradeStatus
 }
 
-export default function MessageForm({ tradeId }: MessageFormProps) {
+export default function MessageForm({ tradeId, tradeStatus }: MessageFormProps) {
   const [content, setContent] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -39,6 +42,25 @@ export default function MessageForm({ tradeId }: MessageFormProps) {
       if (!text || isPending) return
       submitMessage(text)
     }
+  }
+
+  if (tradeStatus === 'pending_offer') {
+    return (
+      <div className="border-t border-gray-200 p-4">
+        <p className="text-center text-sm text-gray-400">
+          Waiting for the provider to accept your swap request.
+        </p>
+      </div>
+    )
+  }
+
+  const isTerminal = (TERMINAL_STATUSES as readonly string[]).includes(tradeStatus)
+  if (isTerminal) {
+    return (
+      <div className="border-t border-gray-200 p-4">
+        <p className="text-center text-sm text-gray-400">This conversation is closed.</p>
+      </div>
+    )
   }
 
   return (

@@ -27,6 +27,7 @@ interface Transition {
 // Text shown in the inline confirmation prompt before executing a
 // possession-transfer transition.
 const CONFIRMATION_PROMPTS: Partial<Record<TradeStatus, string>> = {
+  accepted: 'This confirms you are accepting the swap request. The borrower will be notified.',
   in_progress:
     'This records that the item has been picked up and you are now responsible for its safe return.',
   completed: 'This records that the item has been returned to the provider.',
@@ -41,19 +42,28 @@ const REASON_PLACEHOLDERS: Partial<Record<TradeStatus, string>> = {
 const TRANSITIONS: Partial<Record<TradeStatus, Transition[]>> = {
   pending_offer: [
     {
-      next: 'negotiating',
-      label: 'Start Inquiry',
+      next: 'accepted',
+      label: 'Accept Request',
       forInitiator: false,
       forCounterparty: true,
       danger: false,
-      requiresConfirmation: false,
+      requiresConfirmation: true,
       requiresReason: false,
     },
     {
       next: 'cancelled',
-      label: 'Cancel',
-      forInitiator: true,
+      label: 'Decline',
+      forInitiator: false,
       forCounterparty: true,
+      danger: true,
+      requiresConfirmation: true,
+      requiresReason: true,
+    },
+    {
+      next: 'cancelled',
+      label: 'Withdraw Request',
+      forInitiator: true,
+      forCounterparty: false,
       danger: true,
       requiresConfirmation: true,
       requiresReason: true,
@@ -88,6 +98,15 @@ const TRANSITIONS: Partial<Record<TradeStatus, Transition[]>> = {
       danger: false,
       requiresConfirmation: true,
       requiresReason: false,
+    },
+    {
+      next: 'cancelled',
+      label: 'Cancel',
+      forInitiator: true,
+      forCounterparty: true,
+      danger: true,
+      requiresConfirmation: true,
+      requiresReason: true,
     },
     {
       next: 'disputed',
@@ -203,7 +222,7 @@ export default function TradeStatusPanel({
   const status = useTrade(tradeId, initialStatus)
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
-  const [confirmingNext, setConfirmingNext] = useState<TradeStatus | null>(null)
+  const [confirmingTransition, setConfirmingTransition] = useState<Transition | null>(null)
   const [reasonText, setReasonText] = useState('')
 
   const isInitiator = currentUserId === initiatorId
@@ -213,31 +232,30 @@ export default function TradeStatusPanel({
 
   const availableTransitions = getAvailableTransitions(status, isInitiator, isCounterparty)
 
-  const confirmingTransition = availableTransitions.find((t) => t.next === confirmingNext)
   const confirmingNeedsReason = confirmingTransition?.requiresReason ?? false
 
   function handleTransitionClick(t: Transition) {
     setError(null)
     if (t.requiresConfirmation || t.requiresReason) {
-      setConfirmingNext(t.next)
+      setConfirmingTransition(t)
     } else {
       executeTransition(t.next)
     }
   }
 
   function handleConfirm() {
-    if (confirmingNext) {
-      executeTransition(confirmingNext, confirmingNeedsReason ? reasonText : undefined)
+    if (confirmingTransition) {
+      executeTransition(confirmingTransition.next, confirmingNeedsReason ? reasonText : undefined)
     }
   }
 
   function handleCancelConfirm() {
-    setConfirmingNext(null)
+    setConfirmingTransition(null)
     setReasonText('')
   }
 
   function executeTransition(next: TradeStatus, reason?: string) {
-    setConfirmingNext(null)
+    setConfirmingTransition(null)
     setReasonText('')
     startTransition(async () => {
       const result = await updateTradeStatusAction(tradeId, next, reason?.trim() || undefined)
@@ -257,7 +275,7 @@ export default function TradeStatusPanel({
         </span>
 
         {/* Inline confirmation prompt or action buttons */}
-        {confirmingNext ? (
+        {confirmingTransition ? (
           <div className="min-w-0 flex-1">
             {confirmingNeedsReason ? (
               // Reason-input flow: stacked layout with optional textarea
@@ -265,7 +283,9 @@ export default function TradeStatusPanel({
                 <textarea
                   value={reasonText}
                   onChange={(e) => setReasonText(e.target.value)}
-                  placeholder={REASON_PLACEHOLDERS[confirmingNext] ?? 'Add a reason (optional)…'}
+                  placeholder={
+                    REASON_PLACEHOLDERS[confirmingTransition.next] ?? 'Add a reason (optional)…'
+                  }
                   disabled={isPending}
                   rows={2}
                   className="w-full resize-none rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-700 placeholder-gray-400 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 disabled:opacity-50"
@@ -292,7 +312,7 @@ export default function TradeStatusPanel({
               // Possession-confirmation flow: single-line prompt with confirm/back
               <div className="flex items-center gap-2">
                 <p className="min-w-0 truncate text-xs text-gray-600">
-                  {CONFIRMATION_PROMPTS[confirmingNext] ?? 'Are you sure?'}
+                  {CONFIRMATION_PROMPTS[confirmingTransition.next] ?? 'Are you sure?'}
                 </p>
                 <div className="flex shrink-0 items-center gap-1.5">
                   <button
@@ -319,7 +339,7 @@ export default function TradeStatusPanel({
             <div className="flex items-center gap-2">
               {availableTransitions.map((t) => (
                 <button
-                  key={t.next}
+                  key={t.label}
                   onClick={() => handleTransitionClick(t)}
                   disabled={isPending}
                   className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${

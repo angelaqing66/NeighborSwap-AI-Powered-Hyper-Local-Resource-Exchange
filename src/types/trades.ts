@@ -48,6 +48,7 @@ export interface ValidTransition {
 
 export const VALID_TRANSITIONS: Partial<Record<TradeStatus, ValidTransition[]>> = {
   pending_offer: [
+    { next: 'accepted', roles: ['counterparty'] },
     { next: 'negotiating', roles: ['counterparty'] },
     { next: 'cancelled', roles: ['initiator', 'counterparty'] },
   ],
@@ -57,6 +58,7 @@ export const VALID_TRANSITIONS: Partial<Record<TradeStatus, ValidTransition[]>> 
   ],
   accepted: [
     { next: 'in_progress', roles: ['initiator'] },
+    { next: 'cancelled', roles: ['initiator', 'counterparty'] },
     { next: 'disputed', roles: ['initiator', 'counterparty'] },
   ],
   scheduled: [{ next: 'in_progress', roles: ['initiator'] }],

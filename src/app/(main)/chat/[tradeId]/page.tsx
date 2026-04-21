@@ -97,7 +97,12 @@ export default async function TradeChatPage({ params }: PageProps) {
       />
 
       {/* Real-time chat */}
-      <ChatWindow tradeId={tradeId} currentUserId={user.id} initialMessages={initialMessages} />
+      <ChatWindow
+        tradeId={tradeId}
+        currentUserId={user.id}
+        initialMessages={initialMessages}
+        initialStatus={t.status}
+      />
     </div>
   )
 }

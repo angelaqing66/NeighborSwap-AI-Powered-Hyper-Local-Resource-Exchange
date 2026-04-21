@@ -39,11 +39,22 @@ export default async function ItemDetailPage({ params }: Props) {
 
   const item = itemData as Listing
 
-  const { data: providerData } = await supabase
-    .from('users')
-    .select('id, full_name, avatar_url, trust_score')
-    .eq('id', item.provider_id)
-    .single()
+  const [{ data: providerData }, { data: activeTradeData }] = await Promise.all([
+    supabase
+      .from('users')
+      .select('id, full_name, avatar_url, trust_score')
+      .eq('id', item.provider_id)
+      .single(),
+    supabase
+      .from('trades')
+      .select('id')
+      .eq('item_id', id)
+      .eq('status', 'in_progress')
+      .limit(1)
+      .maybeSingle(),
+  ])
+
+  const isLocked = !!activeTradeData
 
   const provider = providerData as Pick<
     UserProfile,
@@ -149,7 +160,11 @@ export default async function ItemDetailPage({ params }: Props) {
         {isOwner ? (
           <p className="text-sm italic text-gray-400">This is your listing.</p>
         ) : user ? (
-          <RequestSwapButton itemId={item.id} counterpartyId={item.provider_id} />
+          <RequestSwapButton
+            itemId={item.id}
+            counterpartyId={item.provider_id}
+            isLocked={isLocked}
+          />
         ) : (
           <Link
             href="/login"

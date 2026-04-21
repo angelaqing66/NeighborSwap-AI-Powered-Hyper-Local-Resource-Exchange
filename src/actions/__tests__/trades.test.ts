@@ -23,7 +23,7 @@ const mockConflictMaybeSingle = vi.fn()
 const mockConflictLimit = vi.fn().mockReturnValue({ maybeSingle: mockConflictMaybeSingle })
 const mockConflictIn = vi.fn().mockReturnValue({ limit: mockConflictLimit })
 const mockConflictNeq = vi.fn().mockReturnValue({ in: mockConflictIn })
-const mockConflictEq = vi.fn().mockReturnValue({ neq: mockConflictNeq })
+const mockConflictEq = vi.fn().mockReturnValue({ neq: mockConflictNeq, in: mockConflictIn })
 
 // Differentiate chains by column argument: 'id' → conflict check, anything else → fetch
 const mockFetchSelect = vi.fn().mockImplementation((columns: string) => {
@@ -89,6 +89,8 @@ describe('createTradeAction', () => {
     vi.clearAllMocks()
     mockGetUser.mockResolvedValue({ data: { user: CREATE_USER }, error: null })
     mockInsertSingle.mockResolvedValue({ data: { id: NEW_TRADE_ID }, error: null })
+    // Default: item is not currently borrowed
+    mockConflictMaybeSingle.mockResolvedValue({ data: null, error: null })
   })
 
   it('returns error when user is not authenticated', async () => {
@@ -156,6 +158,16 @@ describe('createTradeAction', () => {
       makeFormData({ item_id: CREATE_ITEM_ID, counterparty_id: CREATE_COUNTERPARTY_ID })
     )
     expect(mockRedirect).toHaveBeenCalledWith(`/chat/${NEW_TRADE_ID}`)
+  })
+
+  it('returns error when item is currently borrowed (in_progress)', async () => {
+    mockConflictMaybeSingle.mockResolvedValue({ data: { id: 'existing-trade-999' }, error: null })
+    const result = await createTradeAction(
+      CREATE_PREV_STATE,
+      makeFormData({ item_id: CREATE_ITEM_ID, counterparty_id: CREATE_COUNTERPARTY_ID })
+    )
+    expect(result.error).toMatch(/currently borrowed/i)
+    expect(mockInsert).not.toHaveBeenCalled()
   })
 })
 
@@ -241,6 +253,20 @@ describe('updateTradeStatusAction', () => {
     expect(result.error).toBeNull()
   })
 
+  it('counterparty can accept directly from pending_offer (skipping negotiating)', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: COUNTERPARTY_ID } } })
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('pending_offer'), error: null })
+    const result = await updateTradeStatusAction(TRADE_ID, 'accepted')
+    expect(result.error).toBeNull()
+  })
+
+  it('initiator cannot accept their own pending_offer', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('pending_offer'), error: null })
+    const result = await updateTradeStatusAction(TRADE_ID, 'accepted')
+    expect(result.error).toMatch(/counterparty/i)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
   it('allows the initiator to cancel from pending_offer', async () => {
     mockFetchSingle.mockResolvedValue({ data: makeTrade('pending_offer'), error: null })
     const result = await updateTradeStatusAction(TRADE_ID, 'cancelled')
@@ -290,6 +316,19 @@ describe('updateTradeStatusAction', () => {
     expect(result.error).toBeNull()
   })
 
+  it('allows initiator to cancel from accepted (back out before pickup)', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('accepted'), error: null })
+    const result = await updateTradeStatusAction(TRADE_ID, 'cancelled')
+    expect(result.error).toBeNull()
+  })
+
+  it('allows counterparty to cancel from accepted (back out before pickup)', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: COUNTERPARTY_ID } } })
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('accepted'), error: null })
+    const result = await updateTradeStatusAction(TRADE_ID, 'cancelled')
+    expect(result.error).toBeNull()
+  })
+
   // ── Lifecycle timestamps ────────────────────────────────────────────────────
 
   it('sets accepted_at when transitioning to accepted', async () => {
@@ -330,6 +369,14 @@ describe('updateTradeStatusAction', () => {
     const result = await updateTradeStatusAction(TRADE_ID, 'in_progress')
     expect(result.error).toMatch(/already part of an active trade/i)
     expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('conflict check only considers in_progress trades (completed items can be re-borrowed)', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('accepted'), error: null })
+    // No in_progress conflict — a completed trade for the same item should not block pickup
+    mockConflictMaybeSingle.mockResolvedValue({ data: null, error: null })
+    const result = await updateTradeStatusAction(TRADE_ID, 'in_progress')
+    expect(result.error).toBeNull()
   })
 
   it('returns clear error for 23505 unique violation (race condition bypasses pre-flight)', async () => {
