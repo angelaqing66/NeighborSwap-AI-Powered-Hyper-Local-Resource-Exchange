@@ -22,15 +22,15 @@ test.describe('Item detail page', () => {
   })
 
   test('request swap button is present on a valid item page', async ({ page }) => {
-    // Navigate to listings first to find a real item link if any exist
+    // Navigate to listings first to find a real item link if any exist.
+    // Use CSS :not() to exclude /listings/new at the selector level — hasNot()
+    // matches descendants, not the element itself, so it fails to exclude <a href="/listings/new">.
     await page.goto('/listings')
-    const itemLinks = page
-      .locator('a[href^="/listings/"]')
-      .filter({ hasNot: page.locator('[href="/listings/new"]') })
+    const itemLinks = page.locator('a[href^="/listings/"]:not([href="/listings/new"])')
     const count = await itemLinks.count()
     if (count > 0) {
       await itemLinks.first().click()
-      // Should show either "Request Swap" or "Sign in" or "your listing"
+      // Should show either "Request Swap" or "Sign in to request a swap" or "your listing"
       const swapOrSignIn = page
         .getByRole('button', { name: /request swap/i })
         .or(page.getByRole('link', { name: /sign in/i }))
