@@ -7,7 +7,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { emitToRoom } from '@/lib/socket/emitter'
 import { SOCKET_EVENTS } from '@/lib/socket'
-import type { TradeStatus } from '@/types/trades'
+import { VALID_TRANSITIONS } from '@/types/trades'
+import type { TradeStatus, TransitionRole } from '@/types/trades'
 
 export interface CreateTradeResult {
   error: string | null
@@ -52,7 +53,7 @@ export interface UpdateTradeStatusResult {
 
 export async function updateTradeStatusAction(
   tradeId: string,
-  status: TradeStatus
+  newStatus: TradeStatus
 ): Promise<UpdateTradeStatusResult> {
   const supabase = await createClient()
 
@@ -63,24 +64,46 @@ export async function updateTradeStatusAction(
 
   const { data: trade } = await supabase
     .from('trades')
-    .select('initiator_id, counterparty_id')
+    .select('status, initiator_id, counterparty_id')
     .eq('id', tradeId)
     .single()
 
   if (!trade) return { error: 'Trade not found.' }
-  if (trade.initiator_id !== user.id && trade.counterparty_id !== user.id) {
-    return { error: 'Not authorized.' }
+
+  const isInitiator = trade.initiator_id === user.id
+  const isCounterparty = trade.counterparty_id === user.id
+  if (!isInitiator && !isCounterparty) return { error: 'Not authorized.' }
+
+  // Validate state machine transition
+  const currentStatus = trade.status as TradeStatus
+  const allowedTransitions = VALID_TRANSITIONS[currentStatus] ?? []
+  const transition = allowedTransitions.find((t) => t.next === newStatus)
+
+  if (!transition) {
+    return { error: `Cannot transition from '${currentStatus}' to '${newStatus}'.` }
   }
 
-  const updated_at = new Date().toISOString()
-  const { error } = await supabase.from('trades').update({ status, updated_at }).eq('id', tradeId)
+  // Validate role permission for this specific transition
+  const role: TransitionRole = isInitiator ? 'initiator' : 'counterparty'
+  if (!transition.roles.includes(role)) {
+    return { error: `Only the ${transition.roles.join(' or ')} can perform this transition.` }
+  }
+
+  // Build update payload; set lifecycle timestamps for key milestones
+  const now = new Date().toISOString()
+  const updatePayload: Record<string, unknown> = { status: newStatus }
+  if (newStatus === 'accepted') updatePayload.accepted_at = now
+  if (newStatus === 'completed') updatePayload.completed_at = now
+  if (newStatus === 'cancelled') updatePayload.cancelled_at = now
+
+  const { error } = await supabase.from('trades').update(updatePayload).eq('id', tradeId)
 
   if (error) return { error: 'Failed to update trade status.' }
 
   emitToRoom(`trade:${tradeId}`, SOCKET_EVENTS.tradeStatus(tradeId), {
     trade_id: tradeId,
-    status,
-    updated_at,
+    status: newStatus,
+    updated_at: now,
   })
 
   return { error: null }
