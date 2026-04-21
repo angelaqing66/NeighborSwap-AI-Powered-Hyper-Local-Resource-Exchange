@@ -11,19 +11,30 @@ ALTER TABLE public.items
 COMMENT ON COLUMN public.items.return_by_date IS
   'Optional "Return by" date specified by the Provider when posting the item.';
 
--- 2. Storage: create item-photos bucket (public read)
+-- 2. Storage: create item-photos bucket (public read, 5 MB limit)
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
   'item-photos',
   'item-photos',
   true,
-  5242880, -- 5 MB limit per file
+  5242880,
   ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 )
 ON CONFLICT (id) DO NOTHING;
 
--- 3. Storage RLS: authenticated providers can upload to their own folder
---    File path convention: {user_id}/{listing_id}.{ext}
+-- 3. Storage RLS policies (idempotent — drop before recreate)
+DROP POLICY IF EXISTS "item_photos_select_public"  ON storage.objects;
+DROP POLICY IF EXISTS "item_photos_insert_owner"   ON storage.objects;
+DROP POLICY IF EXISTS "item_photos_update_owner"   ON storage.objects;
+DROP POLICY IF EXISTS "item_photos_delete_owner"   ON storage.objects;
+
+-- Public read: anyone can view item photos (bucket is public, but RLS must allow SELECT too)
+CREATE POLICY "item_photos_select_public"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'item-photos');
+
+-- Authenticated users can upload to their own folder only
+-- File path convention: {user_id}/{listing_id}.{ext}
 CREATE POLICY "item_photos_insert_owner"
   ON storage.objects FOR INSERT
   WITH CHECK (
