@@ -44,20 +44,34 @@ export default async function TradeChatPage({ params }: PageProps) {
 
   // Fetch item title, counterparty profile, and initial messages in parallel
   const otherId = t.initiator_id === user.id ? t.counterparty_id : t.initiator_id
-  const [{ data: itemData }, { data: otherUserData }, { data: messages }] = await Promise.all([
-    supabase.from('items').select('title').eq('id', t.item_id).single(),
-    supabase.from('users').select('full_name').eq('id', otherId).single(),
-    supabase
-      .from('messages')
-      .select('*')
-      .eq('trade_id', tradeId)
-      .order('sent_at', { ascending: true })
-      .limit(100),
-  ])
 
-  const itemTitle = (itemData as { title: string } | null)?.title ?? null
-  const otherName = (otherUserData as { full_name: string | null } | null)?.full_name ?? null
-  const initialMessages = (messages ?? []) as Message[]
+  let itemTitle: string | null = null
+  let otherName: string | null = null
+  let initialMessages: Message[] = []
+
+  try {
+    const [{ data: itemData }, { data: otherUserData }, { data: messages, error: msgFetchErr }] =
+      await Promise.all([
+        supabase.from('items').select('title').eq('id', t.item_id).single(),
+        supabase.from('users').select('full_name').eq('id', otherId).single(),
+        supabase
+          .from('messages')
+          .select('id, trade_id, sender_id, content, event_type, sent_at, created_at')
+          .eq('trade_id', tradeId)
+          .order('sent_at', { ascending: true })
+          .limit(100),
+      ])
+
+    itemTitle = (itemData as { title: string } | null)?.title ?? null
+    otherName = (otherUserData as { full_name: string | null } | null)?.full_name ?? null
+    if (msgFetchErr) {
+      console.error('[TradeChatPage] messages fetch error', msgFetchErr)
+    }
+    initialMessages = (messages ?? []) as Message[]
+  } catch (err) {
+    console.error('[TradeChatPage] parallel fetch threw', err)
+    // Render page with empty data rather than crashing
+  }
 
   return (
     <div className="flex h-full flex-col">
