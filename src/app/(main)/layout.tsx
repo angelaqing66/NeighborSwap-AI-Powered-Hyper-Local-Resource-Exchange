@@ -15,6 +15,12 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
             <Link href="/listings" className="text-gray-600 hover:text-gray-900">
               Browse
             </Link>
+            <Link href="/trades" className="text-gray-600 hover:text-gray-900">
+              Trades
+            </Link>
+            <Link href="/profile" className="text-gray-600 hover:text-gray-900">
+              Profile
+            </Link>
             <Link
               href="/listings/new"
               className="rounded-md bg-green-600 px-3 py-1.5 font-medium text-white hover:bg-green-700"

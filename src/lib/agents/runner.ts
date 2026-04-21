@@ -4,7 +4,11 @@
 // Called from actions/trades.ts when a trade reaches 'accepted' status.
 
 import { runSafety } from './safety'
+import { runLogistics } from './logistics'
+import { runVibe } from './vibe'
 import type { SafetyAgentOutput } from './safety'
+import type { LogisticsAgentOutput } from './logistics'
+import type { VibeAgentOutput } from './vibe'
 import type { LogisticsData } from '@/types/trades'
 
 // ---------------------------------------------------------------------------
@@ -21,26 +25,9 @@ export interface AgentRunnerInput {
 
 export interface AgentRunnerResult {
   safety: SafetyAgentOutput | null // null if the agent rejected
-  logistics: LogisticsData | null // null — logistics agent not yet implemented
-  vibe: number | null // null — vibe agent not yet implemented
+  logistics: LogisticsData | null // null if the agent rejected
+  vibe: number | null // null if the agent rejected
   errors: Record<string, unknown> // keyed by agent name; populated on rejection
-}
-
-// ---------------------------------------------------------------------------
-// Stubs for agents not yet implemented.
-// Returning null keeps the runner's Promise.allSettled shape uniform and
-// allows actions/trades.ts to handle missing results without branching.
-// Replace each stub with the real import once the agent is implemented.
-// ---------------------------------------------------------------------------
-
-async function runLogistics(_input: AgentRunnerInput): Promise<LogisticsData | null> {
-  // TODO: implement src/lib/agents/logistics.ts
-  return null
-}
-
-async function runVibe(_input: AgentRunnerInput): Promise<number | null> {
-  // TODO: implement src/lib/agents/vibe.ts
-  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -51,10 +38,17 @@ async function runVibe(_input: AgentRunnerInput): Promise<number | null> {
 // the error. The function always resolves; it never throws.
 // ---------------------------------------------------------------------------
 export async function runAgents(input: AgentRunnerInput): Promise<AgentRunnerResult> {
+  const agentInput = {
+    trade_id: input.trade_id,
+    listing_title: input.listing_title,
+    listing_description: input.listing_description,
+    agreed_terms: input.agreed_terms,
+  }
+
   const [safetyResult, logisticsResult, vibeResult] = await Promise.allSettled([
     runSafety(input),
-    runLogistics(input),
-    runVibe(input),
+    runLogistics(agentInput),
+    runVibe(agentInput),
   ])
 
   const result: AgentRunnerResult = {
@@ -71,13 +65,13 @@ export async function runAgents(input: AgentRunnerInput): Promise<AgentRunnerRes
   }
 
   if (logisticsResult.status === 'fulfilled') {
-    result.logistics = logisticsResult.value
+    result.logistics = logisticsResult.value as LogisticsAgentOutput
   } else {
     result.errors.logistics = logisticsResult.reason
   }
 
   if (vibeResult.status === 'fulfilled') {
-    result.vibe = vibeResult.value
+    result.vibe = (vibeResult.value as VibeAgentOutput).score
   } else {
     result.errors.vibe = vibeResult.reason
   }
