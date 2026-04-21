@@ -27,10 +27,16 @@ export function useTrade(tradeId: string, initialStatus: TradeStatus): TradeStat
   // ── Supabase Realtime (primary) ──────────────────────────────────────────
   // Subscribes to postgres_changes on the trades row.  Fires on every UPDATE
   // regardless of which server process caused it.
+  //
+  // The channel name includes Date.now() so each effect invocation registers
+  // a fresh channel.  createBrowserClient() returns a singleton — without the
+  // unique suffix, StrictMode's double-invoke (or any remount) would call
+  // .on() on the already-subscribed channel and throw
+  // "cannot add callbacks after subscribe()".
   useEffect(() => {
     const supabase = createClient()
     const channel = supabase
-      .channel(`trade-status-${tradeId}`)
+      .channel(`trade-status-${tradeId}-${Date.now()}`)
       .on(
         'postgres_changes',
         {
