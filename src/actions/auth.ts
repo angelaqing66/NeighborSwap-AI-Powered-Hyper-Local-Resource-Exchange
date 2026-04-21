@@ -97,3 +97,14 @@ export async function signInAction(
 
   redirect('/')
 }
+
+// ---------------------------------------------------------------------------
+// signOutAction
+//
+// Signs out the current user and redirects to the home page.
+// ---------------------------------------------------------------------------
+export async function signOutAction(): Promise<never> {
+  const supabase = await createClient()
+  await supabase.auth.signOut()
+  redirect('/')
+}
