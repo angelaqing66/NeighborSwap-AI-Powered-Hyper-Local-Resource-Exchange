@@ -23,7 +23,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ItemDetailPage({ params }: Props) {
   const supabase = await createClient()
 
-  const [{ data: itemData }, { data: { user } }] = await Promise.all([
+  const [
+    { data: itemData },
+    {
+      data: { user },
+    },
+  ] = await Promise.all([
     supabase.from('items').select('*').eq('id', params.id).single(),
     supabase.auth.getUser(),
   ])
@@ -38,7 +43,10 @@ export default async function ItemDetailPage({ params }: Props) {
     .eq('id', item.provider_id)
     .single()
 
-  const provider = providerData as Pick<UserProfile, 'id' | 'full_name' | 'avatar_url' | 'trust_score'> | null
+  const provider = providerData as Pick<
+    UserProfile,
+    'id' | 'full_name' | 'avatar_url' | 'trust_score'
+  > | null
 
   const isOwner = user?.id === item.provider_id
 
