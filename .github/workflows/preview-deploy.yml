@@ -41,8 +41,29 @@ jobs:
       - name: Pull Vercel environment (preview)
         run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
 
+      # Sync Supabase vars from GitHub secrets → Vercel Preview so they are
+      # available both at build time (NEXT_PUBLIC_ bundle) and at runtime.
+      - name: Sync Supabase env vars to Vercel (preview)
+        run: |
+          if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ] || [ -z "$NEXT_PUBLIC_SUPABASE_ANON_KEY" ]; then
+            echo "WARNING: NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY secret is not set."
+            echo "Add them as GitHub repository secrets. Skipping Vercel env sync."
+            exit 0
+          fi
+          vercel env rm NEXT_PUBLIC_SUPABASE_URL preview --yes --token=${{ secrets.VERCEL_TOKEN }} 2>/dev/null || true
+          echo "$NEXT_PUBLIC_SUPABASE_URL" | vercel env add NEXT_PUBLIC_SUPABASE_URL preview --token=${{ secrets.VERCEL_TOKEN }}
+
+          vercel env rm NEXT_PUBLIC_SUPABASE_ANON_KEY preview --yes --token=${{ secrets.VERCEL_TOKEN }} 2>/dev/null || true
+          echo "$NEXT_PUBLIC_SUPABASE_ANON_KEY" | vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY preview --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
       - name: Build project (Vercel)
         run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
 
       - name: Deploy to Vercel preview
         id: deploy
