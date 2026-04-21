@@ -5,7 +5,13 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { MessageSquare } from 'lucide-react'
 import TradeSidebar from '@/components/chat/TradeSidebar'
-import type { Trade } from '@/types/trades'
+import type { Trade, TradeStatus } from '@/types/trades'
+
+export interface TradeSidebarItem {
+  id: string
+  status: TradeStatus
+  item_title: string | null
+}
 
 export default async function ChatLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -14,15 +20,27 @@ export default async function ChatLayout({ children }: { children: React.ReactNo
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // Join items table to get listing title for each trade
   const { data: trades } = await supabase
     .from('trades')
-    .select('id, status')
+    .select('id, status, item_id, items!item_id(title)')
     .or(`initiator_id.eq.${user.id},counterparty_id.eq.${user.id}`)
     .not('status', 'in', '("completed","cancelled")')
     .order('updated_at', { ascending: false })
     .limit(30)
 
-  const tradeList = (trades ?? []) as Pick<Trade, 'id' | 'status'>[]
+  // Supabase returns the joined relation as an array for FK-based selects
+  type RawTrade = Pick<Trade, 'id' | 'status' | 'item_id'> & {
+    items: { title: string }[] | { title: string } | null
+  }
+
+  const tradeList: TradeSidebarItem[] = ((trades ?? []) as unknown as RawTrade[]).map((t) => {
+    const itemsField = t.items
+    const title = Array.isArray(itemsField)
+      ? (itemsField[0]?.title ?? null)
+      : (itemsField?.title ?? null)
+    return { id: t.id, status: t.status, item_title: title }
+  })
 
   return (
     <div className="flex h-[calc(100vh-8rem)] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">

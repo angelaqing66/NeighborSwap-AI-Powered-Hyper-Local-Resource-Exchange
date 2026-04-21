@@ -6,6 +6,7 @@ import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import ChatWindow from '@/components/chat/ChatWindow'
+import TradeStatusPanel from '@/components/chat/TradeStatusPanel'
 import type { Message } from '@/types/messages'
 import type { Trade } from '@/types/trades'
 
@@ -30,38 +31,56 @@ export default async function TradeChatPage({ params }: PageProps) {
   // Verify the trade exists and the current user is a party
   const { data: trade } = await supabase
     .from('trades')
-    .select('id, status, initiator_id, counterparty_id')
+    .select('id, status, initiator_id, counterparty_id, item_id')
     .eq('id', tradeId)
     .single()
 
   if (!trade) notFound()
 
-  const t = trade as Pick<Trade, 'id' | 'status' | 'initiator_id' | 'counterparty_id'>
+  const t = trade as Pick<Trade, 'id' | 'status' | 'initiator_id' | 'counterparty_id' | 'item_id'>
   if (t.initiator_id !== user.id && t.counterparty_id !== user.id) {
     redirect('/chat')
   }
 
-  // Load the most recent 100 messages for initial render
-  const { data: messages } = await supabase
-    .from('messages')
-    .select('*')
-    .eq('trade_id', tradeId)
-    .order('sent_at', { ascending: true })
-    .limit(100)
+  // Fetch item title, counterparty profile, and initial messages in parallel
+  const otherId = t.initiator_id === user.id ? t.counterparty_id : t.initiator_id
+  const [{ data: itemData }, { data: otherUserData }, { data: messages }] = await Promise.all([
+    supabase.from('items').select('title').eq('id', t.item_id).single(),
+    supabase.from('users').select('full_name').eq('id', otherId).single(),
+    supabase
+      .from('messages')
+      .select('*')
+      .eq('trade_id', tradeId)
+      .order('sent_at', { ascending: true })
+      .limit(100),
+  ])
 
+  const itemTitle = (itemData as { title: string } | null)?.title ?? null
+  const otherName = (otherUserData as { full_name: string | null } | null)?.full_name ?? null
   const initialMessages = (messages ?? []) as Message[]
 
   return (
     <div className="flex h-full flex-col">
       {/* Trade header */}
       <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-        <div>
-          <p className="text-sm font-semibold text-gray-800">
-            Trade #{t.id.slice(0, 8).toUpperCase()}
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-gray-800">
+            {itemTitle ?? `Trade #${t.id.slice(0, 8).toUpperCase()}`}
           </p>
-          <p className="text-xs text-gray-400 capitalize">{t.status.replace(/_/g, ' ')}</p>
+          <p className="text-xs text-gray-400">
+            {otherName ? `with ${otherName}` : `#${t.id.slice(0, 8).toUpperCase()}`}
+          </p>
         </div>
       </div>
+
+      {/* Live status machine strip */}
+      <TradeStatusPanel
+        tradeId={tradeId}
+        initialStatus={t.status}
+        currentUserId={user.id}
+        initiatorId={t.initiator_id}
+        counterpartyId={t.counterparty_id}
+      />
 
       {/* Real-time chat */}
       <ChatWindow tradeId={tradeId} currentUserId={user.id} initialMessages={initialMessages} />
