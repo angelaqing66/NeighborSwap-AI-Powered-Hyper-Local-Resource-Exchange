@@ -35,8 +35,12 @@ export function useTrade(tradeId: string, initialStatus: TradeStatus): TradeStat
   // "cannot add callbacks after subscribe()".
   useEffect(() => {
     const supabase = createClient()
+    // crypto.randomUUID() is collision-free even within the same millisecond.
+    // Date.now() is NOT safe: two effect invocations in the same ms produce
+    // the same topic name, RealtimeClient.channel() finds the still-joined
+    // channel in its registry, and .on() throws "after subscribe()".
     const channel = supabase
-      .channel(`trade-status-${tradeId}-${Date.now()}`)
+      .channel(`trade-status-${tradeId}-${crypto.randomUUID()}`)
       .on(
         'postgres_changes',
         {
