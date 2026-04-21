@@ -1,24 +1,25 @@
 // src/lib/agents/__tests__/runner.test.ts
 // TDD tests for the parallel agent runner.
-// The safety agent module is mocked — no live Groq calls are made.
+// All three agent modules are mocked — no live Groq calls are made.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { SafetyAgentOutput } from '../safety'
+import type { LogisticsAgentOutput } from '../logistics'
+import type { VibeAgentOutput } from '../vibe'
 import type { AgentRunnerInput, AgentRunnerResult } from '../runner'
 
-// ---------------------------------------------------------------------------
-// Mock the safety agent module.
-// logistics and vibe are internal stubs inside runner.ts and always return
-// null, so there is nothing to mock for them.
-// ---------------------------------------------------------------------------
-vi.mock('@/lib/agents/safety', () => ({
-  runSafety: vi.fn(),
-}))
+vi.mock('@/lib/agents/safety', () => ({ runSafety: vi.fn() }))
+vi.mock('@/lib/agents/logistics', () => ({ runLogistics: vi.fn() }))
+vi.mock('@/lib/agents/vibe', () => ({ runVibe: vi.fn() }))
 
 import { runAgents } from '../runner'
 import { runSafety } from '@/lib/agents/safety'
+import { runLogistics } from '@/lib/agents/logistics'
+import { runVibe } from '@/lib/agents/vibe'
 
 const mockRunSafety = vi.mocked(runSafety)
+const mockRunLogistics = vi.mocked(runLogistics)
+const mockRunVibe = vi.mocked(runVibe)
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -46,6 +47,19 @@ const SAFETY_REVIEW_OUTPUT: SafetyAgentOutput = {
   redacted_description: 'Call me at [REDACTED] for details.',
 }
 
+const LOGISTICS_OUTPUT: LogisticsAgentOutput = {
+  method: 'pickup',
+  scheduled_at: '2026-04-26T10:00:00Z',
+  location: { lat: 42.36, lng: -71.06, label: "Lender's front porch" },
+  notes: 'Ring the bell on arrival.',
+}
+
+const VIBE_OUTPUT: VibeAgentOutput = {
+  score: 78,
+  confidence: 0.85,
+  reasoning: 'Clear description and fair terms indicate a trustworthy exchange.',
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
 })
@@ -56,30 +70,38 @@ beforeEach(() => {
 describe('A — all agents resolve', () => {
   it('returns safety output when safety agent fulfills', async () => {
     mockRunSafety.mockResolvedValueOnce(SAFETY_ALLOW_OUTPUT)
+    mockRunLogistics.mockResolvedValueOnce(LOGISTICS_OUTPUT)
+    mockRunVibe.mockResolvedValueOnce(VIBE_OUTPUT)
 
     const result: AgentRunnerResult = await runAgents(MINIMAL_INPUT)
 
     expect(result.safety).toEqual(SAFETY_ALLOW_OUTPUT)
   })
 
-  it('returns logistics: null because the logistics stub always resolves null', async () => {
+  it('returns logistics output when logistics agent fulfills', async () => {
     mockRunSafety.mockResolvedValueOnce(SAFETY_ALLOW_OUTPUT)
+    mockRunLogistics.mockResolvedValueOnce(LOGISTICS_OUTPUT)
+    mockRunVibe.mockResolvedValueOnce(VIBE_OUTPUT)
 
     const result = await runAgents(MINIMAL_INPUT)
 
-    expect(result.logistics).toBeNull()
+    expect(result.logistics).toEqual(LOGISTICS_OUTPUT)
   })
 
-  it('returns vibe: null because the vibe stub always resolves null', async () => {
+  it('returns vibe score (number) extracted from vibe agent output', async () => {
     mockRunSafety.mockResolvedValueOnce(SAFETY_ALLOW_OUTPUT)
+    mockRunLogistics.mockResolvedValueOnce(LOGISTICS_OUTPUT)
+    mockRunVibe.mockResolvedValueOnce(VIBE_OUTPUT)
 
     const result = await runAgents(MINIMAL_INPUT)
 
-    expect(result.vibe).toBeNull()
+    expect(result.vibe).toBe(VIBE_OUTPUT.score)
   })
 
   it('returns an empty errors object when all agents succeed', async () => {
     mockRunSafety.mockResolvedValueOnce(SAFETY_ALLOW_OUTPUT)
+    mockRunLogistics.mockResolvedValueOnce(LOGISTICS_OUTPUT)
+    mockRunVibe.mockResolvedValueOnce(VIBE_OUTPUT)
 
     const result = await runAgents(MINIMAL_INPUT)
 
@@ -88,6 +110,8 @@ describe('A — all agents resolve', () => {
 
   it('propagates a "review" verdict from the safety agent', async () => {
     mockRunSafety.mockResolvedValueOnce(SAFETY_REVIEW_OUTPUT)
+    mockRunLogistics.mockResolvedValueOnce(LOGISTICS_OUTPUT)
+    mockRunVibe.mockResolvedValueOnce(VIBE_OUTPUT)
 
     const result = await runAgents(MINIMAL_INPUT)
 
@@ -97,11 +121,13 @@ describe('A — all agents resolve', () => {
 })
 
 // ---------------------------------------------------------------------------
-// B — Safety agent rejects
+// B — Safety agent rejects: logistics and vibe still succeed
 // ---------------------------------------------------------------------------
 describe('B — safety agent rejects', () => {
   it('sets result.safety to null when safety rejects', async () => {
     mockRunSafety.mockRejectedValueOnce(new Error('Groq timeout'))
+    mockRunLogistics.mockResolvedValueOnce(LOGISTICS_OUTPUT)
+    mockRunVibe.mockResolvedValueOnce(VIBE_OUTPUT)
 
     const result = await runAgents(MINIMAL_INPUT)
 
@@ -111,6 +137,8 @@ describe('B — safety agent rejects', () => {
   it('records the rejection reason in result.errors.safety', async () => {
     const groqError = new Error('Groq rate limit exceeded')
     mockRunSafety.mockRejectedValueOnce(groqError)
+    mockRunLogistics.mockResolvedValueOnce(LOGISTICS_OUTPUT)
+    mockRunVibe.mockResolvedValueOnce(VIBE_OUTPUT)
 
     const result = await runAgents(MINIMAL_INPUT)
 
@@ -119,6 +147,8 @@ describe('B — safety agent rejects', () => {
 
   it('does not set errors.logistics or errors.vibe when only safety rejects', async () => {
     mockRunSafety.mockRejectedValueOnce(new Error('Groq timeout'))
+    mockRunLogistics.mockResolvedValueOnce(LOGISTICS_OUTPUT)
+    mockRunVibe.mockResolvedValueOnce(VIBE_OUTPUT)
 
     const result = await runAgents(MINIMAL_INPUT)
 
@@ -126,45 +156,95 @@ describe('B — safety agent rejects', () => {
     expect(result.errors).not.toHaveProperty('vibe')
   })
 
-  it('keeps logistics and vibe as null when safety rejects', async () => {
+  it('logistics and vibe still resolve when only safety rejects', async () => {
     mockRunSafety.mockRejectedValueOnce(new Error('Groq timeout'))
+    mockRunLogistics.mockResolvedValueOnce(LOGISTICS_OUTPUT)
+    mockRunVibe.mockResolvedValueOnce(VIBE_OUTPUT)
+
+    const result = await runAgents(MINIMAL_INPUT)
+
+    expect(result.logistics).toEqual(LOGISTICS_OUTPUT)
+    expect(result.vibe).toBe(VIBE_OUTPUT.score)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// C — Individual agent rejections: others still succeed (Promise.allSettled)
+// ---------------------------------------------------------------------------
+describe('C — individual agent rejections', () => {
+  it('logistics null and error recorded when logistics rejects', async () => {
+    const err = new Error('Logistics Groq failure')
+    mockRunSafety.mockResolvedValueOnce(SAFETY_ALLOW_OUTPUT)
+    mockRunLogistics.mockRejectedValueOnce(err)
+    mockRunVibe.mockResolvedValueOnce(VIBE_OUTPUT)
 
     const result = await runAgents(MINIMAL_INPUT)
 
     expect(result.logistics).toBeNull()
+    expect(result.errors.logistics).toBe(err)
+    expect(result.safety).toEqual(SAFETY_ALLOW_OUTPUT)
+    expect(result.vibe).toBe(VIBE_OUTPUT.score)
+  })
+
+  it('vibe null and error recorded when vibe rejects', async () => {
+    const err = new Error('Vibe Groq failure')
+    mockRunSafety.mockResolvedValueOnce(SAFETY_ALLOW_OUTPUT)
+    mockRunLogistics.mockResolvedValueOnce(LOGISTICS_OUTPUT)
+    mockRunVibe.mockRejectedValueOnce(err)
+
+    const result = await runAgents(MINIMAL_INPUT)
+
     expect(result.vibe).toBeNull()
+    expect(result.errors.vibe).toBe(err)
+    expect(result.safety).toEqual(SAFETY_ALLOW_OUTPUT)
+    expect(result.logistics).toEqual(LOGISTICS_OUTPUT)
+  })
+
+  it('all fields null and all errors recorded when all agents reject', async () => {
+    mockRunSafety.mockRejectedValueOnce(new Error('s'))
+    mockRunLogistics.mockRejectedValueOnce(new Error('l'))
+    mockRunVibe.mockRejectedValueOnce(new Error('v'))
+
+    const result = await runAgents(MINIMAL_INPUT)
+
+    expect(result.safety).toBeNull()
+    expect(result.logistics).toBeNull()
+    expect(result.vibe).toBeNull()
+    expect(result.errors).toHaveProperty('safety')
+    expect(result.errors).toHaveProperty('logistics')
+    expect(result.errors).toHaveProperty('vibe')
   })
 })
 
 // ---------------------------------------------------------------------------
-// C — runAgents never throws
+// D — runAgents never throws
 // ---------------------------------------------------------------------------
-describe('C — runAgents always resolves', () => {
-  it('resolves (does not throw) when safety rejects with an Error', async () => {
+describe('D — runAgents always resolves', () => {
+  it('resolves (does not throw) when all agents reject with Error', async () => {
     mockRunSafety.mockRejectedValueOnce(new Error('Network error'))
+    mockRunLogistics.mockRejectedValueOnce(new Error('Network error'))
+    mockRunVibe.mockRejectedValueOnce(new Error('Network error'))
 
     await expect(runAgents(MINIMAL_INPUT)).resolves.toBeDefined()
   })
 
-  it('resolves (does not throw) when safety rejects with a non-Error value', async () => {
-    mockRunSafety.mockRejectedValueOnce('string rejection reason')
-
-    await expect(runAgents(MINIMAL_INPUT)).resolves.toBeDefined()
-  })
-
-  it('resolves (does not throw) when safety rejects with undefined', async () => {
-    mockRunSafety.mockRejectedValueOnce(undefined)
+  it('resolves (does not throw) when agents reject with non-Error values', async () => {
+    mockRunSafety.mockRejectedValueOnce('string rejection')
+    mockRunLogistics.mockRejectedValueOnce(42)
+    mockRunVibe.mockRejectedValueOnce(undefined)
 
     await expect(runAgents(MINIMAL_INPUT)).resolves.toBeDefined()
   })
 })
 
 // ---------------------------------------------------------------------------
-// D — Result shape contract
+// E — Result shape contract
 // ---------------------------------------------------------------------------
-describe('D — result shape', () => {
+describe('E — result shape', () => {
   it('always returns an object with safety, logistics, vibe, and errors keys', async () => {
     mockRunSafety.mockResolvedValueOnce(SAFETY_ALLOW_OUTPUT)
+    mockRunLogistics.mockResolvedValueOnce(LOGISTICS_OUTPUT)
+    mockRunVibe.mockResolvedValueOnce(VIBE_OUTPUT)
 
     const result = await runAgents(MINIMAL_INPUT)
 
@@ -174,8 +254,20 @@ describe('D — result shape', () => {
     expect(result).toHaveProperty('errors')
   })
 
+  it('vibe is a number (not an object) when vibe agent fulfills', async () => {
+    mockRunSafety.mockResolvedValueOnce(SAFETY_ALLOW_OUTPUT)
+    mockRunLogistics.mockResolvedValueOnce(LOGISTICS_OUTPUT)
+    mockRunVibe.mockResolvedValueOnce(VIBE_OUTPUT)
+
+    const result = await runAgents(MINIMAL_INPUT)
+
+    expect(typeof result.vibe).toBe('number')
+  })
+
   it('errors is a plain object (not an array) even when empty', async () => {
     mockRunSafety.mockResolvedValueOnce(SAFETY_ALLOW_OUTPUT)
+    mockRunLogistics.mockResolvedValueOnce(LOGISTICS_OUTPUT)
+    mockRunVibe.mockResolvedValueOnce(VIBE_OUTPUT)
 
     const result = await runAgents(MINIMAL_INPUT)
 
@@ -183,22 +275,27 @@ describe('D — result shape', () => {
     expect(Array.isArray(result.errors)).toBe(false)
   })
 
-  it('errors is a plain object (not an array) when safety fails', async () => {
-    mockRunSafety.mockRejectedValueOnce(new Error('fail'))
+  it('handles agreed_terms: null without error', async () => {
+    mockRunSafety.mockResolvedValueOnce(SAFETY_ALLOW_OUTPUT)
+    mockRunLogistics.mockResolvedValueOnce(LOGISTICS_OUTPUT)
+    mockRunVibe.mockResolvedValueOnce(VIBE_OUTPUT)
 
-    const result = await runAgents(MINIMAL_INPUT)
+    const inputWithNullTerms: AgentRunnerInput = { ...MINIMAL_INPUT, agreed_terms: null }
+    const result = await runAgents(inputWithNullTerms)
 
-    expect(typeof result.errors).toBe('object')
-    expect(Array.isArray(result.errors)).toBe(false)
+    expect(result.safety).toEqual(SAFETY_ALLOW_OUTPUT)
+    expect(result.errors).toEqual({})
   })
 })
 
 // ---------------------------------------------------------------------------
-// E — Input forwarding
+// F — Input forwarding
 // ---------------------------------------------------------------------------
-describe('E — input forwarding', () => {
+describe('F — input forwarding', () => {
   it('forwards the full AgentRunnerInput to runSafety', async () => {
     mockRunSafety.mockResolvedValueOnce(SAFETY_ALLOW_OUTPUT)
+    mockRunLogistics.mockResolvedValueOnce(LOGISTICS_OUTPUT)
+    mockRunVibe.mockResolvedValueOnce(VIBE_OUTPUT)
 
     await runAgents(MINIMAL_INPUT)
 
@@ -206,21 +303,15 @@ describe('E — input forwarding', () => {
     expect(mockRunSafety).toHaveBeenCalledWith(MINIMAL_INPUT)
   })
 
-  it('calls runSafety exactly once per runAgents invocation', async () => {
+  it('calls each agent exactly once per runAgents invocation', async () => {
     mockRunSafety.mockResolvedValue(SAFETY_ALLOW_OUTPUT)
+    mockRunLogistics.mockResolvedValue(LOGISTICS_OUTPUT)
+    mockRunVibe.mockResolvedValue(VIBE_OUTPUT)
 
     await runAgents(MINIMAL_INPUT)
 
     expect(mockRunSafety).toHaveBeenCalledTimes(1)
-  })
-
-  it('handles agreed_terms: null without error', async () => {
-    mockRunSafety.mockResolvedValueOnce(SAFETY_ALLOW_OUTPUT)
-
-    const inputWithNullTerms: AgentRunnerInput = { ...MINIMAL_INPUT, agreed_terms: null }
-    const result = await runAgents(inputWithNullTerms)
-
-    expect(result.safety).toEqual(SAFETY_ALLOW_OUTPUT)
-    expect(result.errors).toEqual({})
+    expect(mockRunLogistics).toHaveBeenCalledTimes(1)
+    expect(mockRunVibe).toHaveBeenCalledTimes(1)
   })
 })
