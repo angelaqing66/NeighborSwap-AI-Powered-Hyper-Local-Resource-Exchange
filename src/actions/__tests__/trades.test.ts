@@ -14,10 +14,22 @@ const mockInsertSingle = vi.fn()
 const mockInsertSelect = vi.fn().mockReturnValue({ single: mockInsertSingle })
 const mockInsert = vi.fn().mockReturnValue({ select: mockInsertSelect })
 
-// updateTradeStatusAction — fetch: from('trades').select('...').eq().single()
+// updateTradeStatusAction — fetch: from('trades').select('status,...').eq().single()
 const mockFetchSingle = vi.fn()
 const mockFetchEq = vi.fn().mockReturnValue({ single: mockFetchSingle })
-const mockFetchSelect = vi.fn().mockReturnValue({ eq: mockFetchEq })
+
+// updateTradeStatusAction — conflict check: select('id').eq().neq().in().limit().maybeSingle()
+const mockConflictMaybeSingle = vi.fn()
+const mockConflictLimit = vi.fn().mockReturnValue({ maybeSingle: mockConflictMaybeSingle })
+const mockConflictIn = vi.fn().mockReturnValue({ limit: mockConflictLimit })
+const mockConflictNeq = vi.fn().mockReturnValue({ in: mockConflictIn })
+const mockConflictEq = vi.fn().mockReturnValue({ neq: mockConflictNeq })
+
+// Differentiate chains by column argument: 'id' → conflict check, anything else → fetch
+const mockFetchSelect = vi.fn().mockImplementation((columns: string) => {
+  if (columns === 'id') return { eq: mockConflictEq }
+  return { eq: mockFetchEq }
+})
 
 // updateTradeStatusAction — update: from('trades').update({}).eq()
 const mockUpdateEq = vi.fn()
@@ -63,9 +75,10 @@ const NEW_TRADE_ID = 'trade-new-1'
 const TRADE_ID = 'trade-uuid-001'
 const INITIATOR_ID = 'user-initiator-001'
 const COUNTERPARTY_ID = 'user-counterparty-001'
+const ITEM_ID = 'item-test-001'
 
 function makeTrade(status = 'pending_offer') {
-  return { status, initiator_id: INITIATOR_ID, counterparty_id: COUNTERPARTY_ID }
+  return { status, initiator_id: INITIATOR_ID, counterparty_id: COUNTERPARTY_ID, item_id: ITEM_ID }
 }
 
 // ── createTradeAction ─────────────────────────────────────────────────────────
@@ -156,6 +169,8 @@ describe('updateTradeStatusAction', () => {
     mockFetchSingle.mockResolvedValue({ data: makeTrade('negotiating'), error: null })
     mockUpdateEq.mockResolvedValue({ error: null })
     mockMessageInsert.mockResolvedValue({ error: null })
+    // Default: no competing active trade (conflict check returns null)
+    mockConflictMaybeSingle.mockResolvedValue({ data: null, error: null })
   })
 
   // ── Auth ────────────────────────────────────────────────────────────────────
@@ -304,6 +319,28 @@ describe('updateTradeStatusAction', () => {
     expect(payload.accepted_at).toBeUndefined()
     expect(payload.completed_at).toBeUndefined()
     expect(payload.cancelled_at).toBeUndefined()
+  })
+
+  // ── Duplicate active trade (conflict check) ─────────────────────────────────
+
+  it('returns clear error when pre-flight conflict check finds an active trade', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('accepted'), error: null })
+    mockConflictMaybeSingle.mockResolvedValue({ data: { id: 'other-trade-999' }, error: null })
+    const result = await updateTradeStatusAction(TRADE_ID, 'in_progress')
+    expect(result.error).toMatch(/already part of an active trade/i)
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it('returns clear error for 23505 unique violation (race condition bypasses pre-flight)', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('accepted'), error: null })
+    // Pre-flight sees no conflict (race: another request wins between check and update)
+    mockConflictMaybeSingle.mockResolvedValue({ data: null, error: null })
+    mockUpdateEq.mockResolvedValue({
+      error: { code: '23505', message: 'duplicate key value violates unique constraint' },
+    })
+    const result = await updateTradeStatusAction(TRADE_ID, 'in_progress')
+    expect(result.error).toMatch(/already part of an active trade/i)
+    expect(mockEmitToRoom).not.toHaveBeenCalled()
   })
 
   // ── DB failure ──────────────────────────────────────────────────────────────

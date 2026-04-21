@@ -65,7 +65,7 @@ export async function updateTradeStatusAction(
 
   const { data: trade } = await supabase
     .from('trades')
-    .select('status, initiator_id, counterparty_id')
+    .select('status, initiator_id, counterparty_id, item_id')
     .eq('id', tradeId)
     .single()
 
@@ -90,6 +90,27 @@ export async function updateTradeStatusAction(
     return { error: `Only the ${transition.roles.join(' or ')} can perform this transition.` }
   }
 
+  // Guard: when confirming pickup, ensure no other trade for this item is
+  // already active (in_progress or completed).  The DB enforces this via a
+  // partial unique index; checking here first gives a clear error message.
+  if (newStatus === 'in_progress') {
+    const { data: conflict } = await supabase
+      .from('trades')
+      .select('id')
+      .eq('item_id', trade.item_id)
+      .neq('id', tradeId)
+      .in('status', ['in_progress', 'completed'])
+      .limit(1)
+      .maybeSingle()
+
+    if (conflict) {
+      return {
+        error:
+          'This item is already part of an active trade. The previous trade must be completed or cancelled before confirming pickup.',
+      }
+    }
+  }
+
   // Build update payload; set lifecycle timestamps and optional reason fields
   const now = new Date().toISOString()
   const trimmedReason = reason?.trim() || undefined
@@ -111,6 +132,14 @@ export async function updateTradeStatusAction(
       details: error.details,
       hint: error.hint,
     })
+    // 23505 = unique_violation — another trade for the same item is already
+    // in_progress or completed (idx_trades_item_one_active partial unique index).
+    if (error.code === '23505') {
+      return {
+        error:
+          'This item is already part of an active trade. The previous trade must be completed or cancelled first.',
+      }
+    }
     return { error: `Failed to update trade status: ${error.message}` }
   }
 
