@@ -53,7 +53,8 @@ export interface UpdateTradeStatusResult {
 
 export async function updateTradeStatusAction(
   tradeId: string,
-  newStatus: TradeStatus
+  newStatus: TradeStatus,
+  reason?: string
 ): Promise<UpdateTradeStatusResult> {
   const supabase = await createClient()
 
@@ -89,12 +90,15 @@ export async function updateTradeStatusAction(
     return { error: `Only the ${transition.roles.join(' or ')} can perform this transition.` }
   }
 
-  // Build update payload; set lifecycle timestamps for key milestones
+  // Build update payload; set lifecycle timestamps and optional reason fields
   const now = new Date().toISOString()
+  const trimmedReason = reason?.trim() || undefined
   const updatePayload: Record<string, unknown> = { status: newStatus }
   if (newStatus === 'accepted') updatePayload.accepted_at = now
   if (newStatus === 'completed') updatePayload.completed_at = now
   if (newStatus === 'cancelled') updatePayload.cancelled_at = now
+  if (newStatus === 'cancelled' && trimmedReason) updatePayload.cancellation_reason = trimmedReason
+  if (newStatus === 'disputed' && trimmedReason) updatePayload.dispute_reason = trimmedReason
 
   const { error } = await supabase.from('trades').update(updatePayload).eq('id', tradeId)
 
@@ -106,5 +110,39 @@ export async function updateTradeStatusAction(
     updated_at: now,
   })
 
+  // Insert a persistent system event message and deliver it to the chat
+  // timeline for possession-transfer milestones and other key transitions.
+  const systemEvent = SYSTEM_EVENTS[newStatus]
+  if (systemEvent) {
+    // Append the user-supplied reason (if any) so it appears in the chat card.
+    const content = trimmedReason ? `${systemEvent.content}: ${trimmedReason}` : systemEvent.content
+
+    await supabase.from('messages').insert({
+      trade_id: tradeId,
+      sender_id: user.id,
+      content,
+      event_type: systemEvent.event_type,
+      sent_at: now,
+    })
+
+    emitToRoom(`trade:${tradeId}`, SOCKET_EVENTS.chatMessage(tradeId), {
+      trade_id: tradeId,
+      sender_id: user.id,
+      content,
+      event_type: systemEvent.event_type,
+      sent_at: now,
+    })
+  }
+
   return { error: null }
+}
+
+// System event messages inserted into the chat when milestone transitions occur.
+// Keyed by the new status.
+const SYSTEM_EVENTS: Partial<Record<TradeStatus, { content: string; event_type: string }>> = {
+  accepted: { content: 'Deal accepted', event_type: 'status:accepted' },
+  in_progress: { content: 'Pickup confirmed', event_type: 'status:in_progress' },
+  completed: { content: 'Return confirmed', event_type: 'status:completed' },
+  cancelled: { content: 'Trade cancelled', event_type: 'status:cancelled' },
+  disputed: { content: 'Dispute raised', event_type: 'status:disputed' },
 }

@@ -36,6 +36,7 @@ export interface ChatMessagePayload {
   trade_id: string
   sender_id: string
   content: string
+  event_type?: string // present only for system event messages
   sent_at: string // ISO-8601
 }
 

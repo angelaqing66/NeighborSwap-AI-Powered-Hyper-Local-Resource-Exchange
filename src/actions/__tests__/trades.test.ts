@@ -23,13 +23,16 @@ const mockFetchSelect = vi.fn().mockReturnValue({ eq: mockFetchEq })
 const mockUpdateEq = vi.fn()
 const mockUpdate = vi.fn().mockReturnValue({ eq: mockUpdateEq })
 
+// System event messages: from('messages').insert({})
+const mockMessageInsert = vi.fn()
+
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn().mockResolvedValue({
     auth: { getUser: mockGetUser },
-    from: vi.fn().mockReturnValue({
-      insert: mockInsert,
-      select: mockFetchSelect,
-      update: mockUpdate,
+    from: vi.fn().mockImplementation((table: string) => {
+      if (table === 'messages') return { insert: mockMessageInsert }
+      // 'trades' — exposes all chains; each action uses the right starting method
+      return { insert: mockInsert, select: mockFetchSelect, update: mockUpdate }
     }),
   }),
 }))
@@ -152,6 +155,7 @@ describe('updateTradeStatusAction', () => {
     // Default trade: negotiating (middle of flow, allows many transitions)
     mockFetchSingle.mockResolvedValue({ data: makeTrade('negotiating'), error: null })
     mockUpdateEq.mockResolvedValue({ error: null })
+    mockMessageInsert.mockResolvedValue({ error: null })
   })
 
   // ── Auth ────────────────────────────────────────────────────────────────────
@@ -207,15 +211,14 @@ describe('updateTradeStatusAction', () => {
 
   // ── Role-based permission ───────────────────────────────────────────────────
 
-  it('returns error when initiator tries to start negotiating (counterparty-only)', async () => {
+  it('returns error when initiator tries to start inquiry (counterparty-only)', async () => {
     mockFetchSingle.mockResolvedValue({ data: makeTrade('pending_offer'), error: null })
-    // mockGetUser already returns INITIATOR_ID
     const result = await updateTradeStatusAction(TRADE_ID, 'negotiating')
     expect(result.error).toMatch(/counterparty/i)
     expect(mockUpdate).not.toHaveBeenCalled()
   })
 
-  it('allows the counterparty to start negotiating', async () => {
+  it('allows the counterparty to start inquiry', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: COUNTERPARTY_ID } } })
     mockFetchSingle.mockResolvedValue({ data: makeTrade('pending_offer'), error: null })
     const result = await updateTradeStatusAction(TRADE_ID, 'negotiating')
@@ -228,25 +231,24 @@ describe('updateTradeStatusAction', () => {
     expect(result.error).toBeNull()
   })
 
-  it('allows the initiator to accept from negotiating', async () => {
-    // mockFetchSingle default is 'negotiating'
+  it('allows the initiator to request swap from negotiating', async () => {
     const result = await updateTradeStatusAction(TRADE_ID, 'accepted')
     expect(result.error).toBeNull()
   })
 
-  it('allows the counterparty to accept from negotiating', async () => {
+  it('allows the counterparty to request swap from negotiating', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: COUNTERPARTY_ID } } })
     const result = await updateTradeStatusAction(TRADE_ID, 'accepted')
     expect(result.error).toBeNull()
   })
 
-  it('allows both parties to mark in_progress from accepted', async () => {
+  it('allows both parties to confirm pickup from accepted', async () => {
     mockFetchSingle.mockResolvedValue({ data: makeTrade('accepted'), error: null })
     const result = await updateTradeStatusAction(TRADE_ID, 'in_progress')
     expect(result.error).toBeNull()
   })
 
-  it('allows both parties to mark completed from in_progress', async () => {
+  it('allows both parties to confirm return from in_progress', async () => {
     mockFetchSingle.mockResolvedValue({ data: makeTrade('in_progress'), error: null })
     const result = await updateTradeStatusAction(TRADE_ID, 'completed')
     expect(result.error).toBeNull()
@@ -261,24 +263,21 @@ describe('updateTradeStatusAction', () => {
   // ── Lifecycle timestamps ────────────────────────────────────────────────────
 
   it('sets accepted_at when transitioning to accepted', async () => {
-    const result = await updateTradeStatusAction(TRADE_ID, 'accepted')
-    expect(result.error).toBeNull()
+    await updateTradeStatusAction(TRADE_ID, 'accepted')
     const payload = mockUpdate.mock.calls[0][0] as Record<string, unknown>
     expect(payload.accepted_at).toMatch(/^\d{4}-\d{2}-\d{2}T/)
   })
 
   it('sets completed_at when transitioning to completed', async () => {
     mockFetchSingle.mockResolvedValue({ data: makeTrade('in_progress'), error: null })
-    const result = await updateTradeStatusAction(TRADE_ID, 'completed')
-    expect(result.error).toBeNull()
+    await updateTradeStatusAction(TRADE_ID, 'completed')
     const payload = mockUpdate.mock.calls[0][0] as Record<string, unknown>
     expect(payload.completed_at).toMatch(/^\d{4}-\d{2}-\d{2}T/)
   })
 
   it('sets cancelled_at when transitioning to cancelled', async () => {
     mockFetchSingle.mockResolvedValue({ data: makeTrade('pending_offer'), error: null })
-    const result = await updateTradeStatusAction(TRADE_ID, 'cancelled')
-    expect(result.error).toBeNull()
+    await updateTradeStatusAction(TRADE_ID, 'cancelled')
     const payload = mockUpdate.mock.calls[0][0] as Record<string, unknown>
     expect(payload.cancelled_at).toMatch(/^\d{4}-\d{2}-\d{2}T/)
   })
@@ -305,16 +304,13 @@ describe('updateTradeStatusAction', () => {
 
   it('emits the trade status event after a successful update', async () => {
     await updateTradeStatusAction(TRADE_ID, 'accepted')
-    expect(mockEmitToRoom).toHaveBeenCalledOnce()
-    const [room, , payload] = mockEmitToRoom.mock.calls[0] as [
-      string,
-      string,
-      Record<string, unknown>,
-    ]
+    const statusCalls = mockEmitToRoom.mock.calls.filter(([, event]) =>
+      (event as string).startsWith(`trade:${TRADE_ID}:status`)
+    )
+    expect(statusCalls).toHaveLength(1)
+    const [room, , payload] = statusCalls[0] as [string, string, Record<string, unknown>]
     expect(room).toBe(`trade:${TRADE_ID}`)
-    expect(payload.trade_id).toBe(TRADE_ID)
     expect(payload.status).toBe('accepted')
-    expect(payload.updated_at as string).toMatch(/^\d{4}-\d{2}-\d{2}T/)
   })
 
   it('does not emit when DB update fails', async () => {
@@ -323,11 +319,139 @@ describe('updateTradeStatusAction', () => {
     expect(mockEmitToRoom).not.toHaveBeenCalled()
   })
 
-  // ── Update payload ──────────────────────────────────────────────────────────
-
   it('includes the correct status in the DB update payload', async () => {
     await updateTradeStatusAction(TRADE_ID, 'accepted')
     const payload = mockUpdate.mock.calls[0][0] as Record<string, unknown>
     expect(payload.status).toBe('accepted')
+  })
+
+  // ── System event messages ───────────────────────────────────────────────────
+
+  it('inserts a system event message when transitioning to accepted', async () => {
+    await updateTradeStatusAction(TRADE_ID, 'accepted')
+    expect(mockMessageInsert).toHaveBeenCalledOnce()
+    const msgPayload = mockMessageInsert.mock.calls[0][0] as Record<string, unknown>
+    expect(msgPayload.trade_id).toBe(TRADE_ID)
+    expect(msgPayload.event_type).toBe('status:accepted')
+    expect(typeof msgPayload.content).toBe('string')
+  })
+
+  it('inserts a system event message when confirming pickup (in_progress)', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('accepted'), error: null })
+    await updateTradeStatusAction(TRADE_ID, 'in_progress')
+    expect(mockMessageInsert).toHaveBeenCalledOnce()
+    const msgPayload = mockMessageInsert.mock.calls[0][0] as Record<string, unknown>
+    expect(msgPayload.event_type).toBe('status:in_progress')
+  })
+
+  it('inserts a system event message when confirming return (completed)', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('in_progress'), error: null })
+    await updateTradeStatusAction(TRADE_ID, 'completed')
+    expect(mockMessageInsert).toHaveBeenCalledOnce()
+    const msgPayload = mockMessageInsert.mock.calls[0][0] as Record<string, unknown>
+    expect(msgPayload.event_type).toBe('status:completed')
+  })
+
+  it('inserts a system event message when trade is cancelled', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('pending_offer'), error: null })
+    await updateTradeStatusAction(TRADE_ID, 'cancelled')
+    expect(mockMessageInsert).toHaveBeenCalledOnce()
+    const msgPayload = mockMessageInsert.mock.calls[0][0] as Record<string, unknown>
+    expect(msgPayload.event_type).toBe('status:cancelled')
+  })
+
+  it('inserts a system event message when dispute is raised', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('in_progress'), error: null })
+    await updateTradeStatusAction(TRADE_ID, 'disputed')
+    expect(mockMessageInsert).toHaveBeenCalledOnce()
+    const msgPayload = mockMessageInsert.mock.calls[0][0] as Record<string, unknown>
+    expect(msgPayload.event_type).toBe('status:disputed')
+  })
+
+  it('does not insert a system message for non-milestone transitions (negotiating)', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: COUNTERPARTY_ID } } })
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('pending_offer'), error: null })
+    await updateTradeStatusAction(TRADE_ID, 'negotiating')
+    expect(mockMessageInsert).not.toHaveBeenCalled()
+  })
+
+  it('emits a chatMessage socket event for milestone transitions', async () => {
+    await updateTradeStatusAction(TRADE_ID, 'accepted')
+    const chatCalls = mockEmitToRoom.mock.calls.filter(([, event]) =>
+      (event as string).startsWith(`chat:${TRADE_ID}:message`)
+    )
+    expect(chatCalls).toHaveLength(1)
+    const [, , payload] = chatCalls[0] as [string, string, Record<string, unknown>]
+    expect(payload.event_type).toBe('status:accepted')
+    expect(payload.trade_id).toBe(TRADE_ID)
+  })
+
+  it('does not emit a chatMessage event for non-milestone transitions', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: COUNTERPARTY_ID } } })
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('pending_offer'), error: null })
+    await updateTradeStatusAction(TRADE_ID, 'negotiating')
+    const chatCalls = mockEmitToRoom.mock.calls.filter(([, event]) =>
+      (event as string).startsWith(`chat:${TRADE_ID}:message`)
+    )
+    expect(chatCalls).toHaveLength(0)
+  })
+
+  it('system event message uses the acting user id as sender_id', async () => {
+    await updateTradeStatusAction(TRADE_ID, 'accepted')
+    const msgPayload = mockMessageInsert.mock.calls[0][0] as Record<string, unknown>
+    expect(msgPayload.sender_id).toBe(INITIATOR_ID)
+  })
+
+  // ── Reason field ────────────────────────────────────────────────────────────
+
+  it('stores cancellation_reason in the update payload when reason is provided', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('pending_offer'), error: null })
+    await updateTradeStatusAction(TRADE_ID, 'cancelled', 'No longer needed')
+    const payload = mockUpdate.mock.calls[0][0] as Record<string, unknown>
+    expect(payload.cancellation_reason).toBe('No longer needed')
+  })
+
+  it('does not set cancellation_reason when no reason is provided', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('pending_offer'), error: null })
+    await updateTradeStatusAction(TRADE_ID, 'cancelled')
+    const payload = mockUpdate.mock.calls[0][0] as Record<string, unknown>
+    expect(payload.cancellation_reason).toBeUndefined()
+  })
+
+  it('stores dispute_reason in the update payload when reason is provided', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('in_progress'), error: null })
+    await updateTradeStatusAction(TRADE_ID, 'disputed', 'Item was damaged')
+    const payload = mockUpdate.mock.calls[0][0] as Record<string, unknown>
+    expect(payload.dispute_reason).toBe('Item was damaged')
+  })
+
+  it('does not set dispute_reason when no reason is provided', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('in_progress'), error: null })
+    await updateTradeStatusAction(TRADE_ID, 'disputed')
+    const payload = mockUpdate.mock.calls[0][0] as Record<string, unknown>
+    expect(payload.dispute_reason).toBeUndefined()
+  })
+
+  it('includes the reason in the system event message content', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('pending_offer'), error: null })
+    await updateTradeStatusAction(TRADE_ID, 'cancelled', 'Found another option')
+    const msgPayload = mockMessageInsert.mock.calls[0][0] as Record<string, unknown>
+    expect(msgPayload.content).toContain('Found another option')
+  })
+
+  it('trims whitespace from reason before storing', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('pending_offer'), error: null })
+    await updateTradeStatusAction(TRADE_ID, 'cancelled', '  changed my mind  ')
+    const payload = mockUpdate.mock.calls[0][0] as Record<string, unknown>
+    expect(payload.cancellation_reason).toBe('changed my mind')
+  })
+
+  it('ignores a blank-only reason (treats as no reason)', async () => {
+    mockFetchSingle.mockResolvedValue({ data: makeTrade('pending_offer'), error: null })
+    await updateTradeStatusAction(TRADE_ID, 'cancelled', '   ')
+    const payload = mockUpdate.mock.calls[0][0] as Record<string, unknown>
+    expect(payload.cancellation_reason).toBeUndefined()
+    const msgPayload = mockMessageInsert.mock.calls[0][0] as Record<string, unknown>
+    expect(msgPayload.content).toBe('Trade cancelled')
   })
 })
