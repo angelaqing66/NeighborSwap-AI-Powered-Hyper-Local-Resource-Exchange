@@ -32,6 +32,7 @@ export interface ListingUpdatePayload {
 }
 
 export interface ChatMessagePayload {
+  id?: string // DB-assigned message ID — present when emitted from Server Actions
   trade_id: string
   sender_id: string
   content: string

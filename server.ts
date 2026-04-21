@@ -38,9 +38,17 @@ app.prepare().then(() => {
       socket.join(`trade:${tradeId}`)
     })
 
+    socket.on('leave_trade', (tradeId: string) => {
+      socket.leave(`trade:${tradeId}`)
+    })
+
     // Join a listing room to receive real-time listing updates
     socket.on('join_listing', (listingId: string) => {
       socket.join(`listing:${listingId}`)
+    })
+
+    socket.on('leave_listing', (listingId: string) => {
+      socket.leave(`listing:${listingId}`)
     })
   })
 
