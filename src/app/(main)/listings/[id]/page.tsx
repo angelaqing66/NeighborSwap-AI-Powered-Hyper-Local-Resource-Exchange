@@ -11,16 +11,18 @@ import type { Listing } from '@/types/listings'
 import type { UserProfile } from '@/types/user'
 
 interface Props {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { id } = await params
   const supabase = await createClient()
-  const { data } = await supabase.from('items').select('title').eq('id', params.id).single()
+  const { data } = await supabase.from('items').select('title').eq('id', id).single()
   return { title: data ? `${data.title} — NeighborSwap` : 'Item not found — NeighborSwap' }
 }
 
 export default async function ItemDetailPage({ params }: Props) {
+  const { id } = await params
   const supabase = await createClient()
 
   const [
@@ -29,7 +31,7 @@ export default async function ItemDetailPage({ params }: Props) {
       data: { user },
     },
   ] = await Promise.all([
-    supabase.from('items').select('*').eq('id', params.id).single(),
+    supabase.from('items').select('*').eq('id', id).single(),
     supabase.auth.getUser(),
   ])
 
