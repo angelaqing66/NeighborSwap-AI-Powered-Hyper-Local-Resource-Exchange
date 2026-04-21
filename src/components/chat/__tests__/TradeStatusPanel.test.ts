@@ -8,50 +8,64 @@ import { getAvailableTransitions } from '../TradeStatusPanel'
 describe('getAvailableTransitions', () => {
   // ── pending_offer ──────────────────────────────────────────────────────────
 
-  it('pending_offer: counterparty can start inquiry or cancel', () => {
+  it('pending_offer: counterparty can accept or decline the request', () => {
     const nexts = getAvailableTransitions('pending_offer', false, true).map((t) => t.next)
-    expect(nexts).toContain('negotiating')
+    expect(nexts).toContain('accepted')
     expect(nexts).toContain('cancelled')
   })
 
-  it('pending_offer: initiator can only cancel (not start inquiry)', () => {
+  it('pending_offer: counterparty does not see negotiating (legacy step hidden)', () => {
+    const nexts = getAvailableTransitions('pending_offer', false, true).map((t) => t.next)
+    expect(nexts).not.toContain('negotiating')
+  })
+
+  it('pending_offer: initiator can only withdraw (not accept)', () => {
     const nexts = getAvailableTransitions('pending_offer', true, false).map((t) => t.next)
+    expect(nexts).not.toContain('accepted')
     expect(nexts).not.toContain('negotiating')
     expect(nexts).toContain('cancelled')
   })
 
-  it('pending_offer: start inquiry button is labeled "Start Inquiry"', () => {
+  it('pending_offer: Accept Request button is labeled "Accept Request"', () => {
     const t = getAvailableTransitions('pending_offer', false, true).find(
-      (x) => x.next === 'negotiating'
+      (x) => x.next === 'accepted'
     )
-    expect(t?.label).toBe('Start Inquiry')
+    expect(t?.label).toBe('Accept Request')
   })
 
-  it('pending_offer: start inquiry is not a danger action', () => {
+  it('pending_offer: Accept Request is not a danger action', () => {
     const t = getAvailableTransitions('pending_offer', false, true).find(
-      (x) => x.next === 'negotiating'
+      (x) => x.next === 'accepted'
     )
     expect(t?.danger).toBe(false)
   })
 
-  it('pending_offer: start inquiry does not require confirmation', () => {
+  it('pending_offer: Accept Request requires confirmation', () => {
     const t = getAvailableTransitions('pending_offer', false, true).find(
-      (x) => x.next === 'negotiating'
+      (x) => x.next === 'accepted'
     )
-    expect(t?.requiresConfirmation).toBe(false)
+    expect(t?.requiresConfirmation).toBe(true)
   })
 
-  it('pending_offer: cancel is a danger action', () => {
+  it('pending_offer: counterparty cancel is labeled "Decline"', () => {
+    const t = getAvailableTransitions('pending_offer', false, true).find(
+      (x) => x.next === 'cancelled'
+    )
+    expect(t?.label).toBe('Decline')
+  })
+
+  it('pending_offer: initiator cancel is labeled "Withdraw Request"', () => {
+    const t = getAvailableTransitions('pending_offer', true, false).find(
+      (x) => x.next === 'cancelled'
+    )
+    expect(t?.label).toBe('Withdraw Request')
+  })
+
+  it('pending_offer: Decline is a danger action that requires confirmation and a reason', () => {
     const t = getAvailableTransitions('pending_offer', false, true).find(
       (x) => x.next === 'cancelled'
     )
     expect(t?.danger).toBe(true)
-  })
-
-  it('pending_offer: cancel requires confirmation and a reason', () => {
-    const t = getAvailableTransitions('pending_offer', false, true).find(
-      (x) => x.next === 'cancelled'
-    )
     expect(t?.requiresConfirmation).toBe(true)
     expect(t?.requiresReason).toBe(true)
   })
@@ -120,6 +134,20 @@ describe('getAvailableTransitions', () => {
   it('accepted: confirm pickup does not require a reason', () => {
     const t = getAvailableTransitions('accepted', true, false).find((x) => x.next === 'in_progress')
     expect(t?.requiresReason).toBe(false)
+  })
+
+  it('accepted: both parties can cancel before pickup', () => {
+    const initiatorNexts = getAvailableTransitions('accepted', true, false).map((t) => t.next)
+    const counterpartyNexts = getAvailableTransitions('accepted', false, true).map((t) => t.next)
+    expect(initiatorNexts).toContain('cancelled')
+    expect(counterpartyNexts).toContain('cancelled')
+  })
+
+  it('accepted: cancel is a danger action requiring confirmation and a reason', () => {
+    const t = getAvailableTransitions('accepted', true, false).find((x) => x.next === 'cancelled')
+    expect(t?.danger).toBe(true)
+    expect(t?.requiresConfirmation).toBe(true)
+    expect(t?.requiresReason).toBe(true)
   })
 
   // ── scheduled ─────────────────────────────────────────────────────────────

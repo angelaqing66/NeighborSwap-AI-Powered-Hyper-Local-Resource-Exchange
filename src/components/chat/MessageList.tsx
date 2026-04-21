@@ -10,7 +10,7 @@ interface MessageListProps {
 }
 
 const EVENT_CONFIG: Record<string, { label: string; Icon: React.ElementType; color: string }> = {
-  'status:accepted': { label: 'Deal accepted', Icon: CheckCircle, color: 'text-green-600' },
+  'status:accepted': { label: 'Swap request accepted', Icon: CheckCircle, color: 'text-green-600' },
   'status:in_progress': { label: 'Pickup confirmed', Icon: Package, color: 'text-purple-600' },
   'status:completed': { label: 'Return confirmed', Icon: CheckCircle, color: 'text-blue-600' },
   'status:cancelled': { label: 'Trade cancelled', Icon: XCircle, color: 'text-gray-500' },
@@ -19,7 +19,7 @@ const EVENT_CONFIG: Record<string, { label: string; Icon: React.ElementType; col
 
 // First-person labels when the current user performed the action.
 const MY_EVENT_LABELS: Record<string, string> = {
-  'status:accepted': 'You accepted the deal',
+  'status:accepted': 'You accepted the swap request',
   'status:in_progress': 'You confirmed pickup',
   'status:completed': 'You confirmed return',
   'status:cancelled': 'You cancelled the trade',

@@ -34,6 +34,16 @@ export async function createTradeAction(
 
   if (user.id === counterparty_id) return { error: 'You cannot swap with yourself.' }
 
+  const { data: locked } = await supabase
+    .from('trades')
+    .select('id')
+    .eq('item_id', item_id)
+    .in('status', ['in_progress'])
+    .limit(1)
+    .maybeSingle()
+
+  if (locked) return { error: 'This item is currently borrowed and cannot be requested.' }
+
   const { data, error } = await supabase
     .from('trades')
     .insert({ initiator_id: user.id, counterparty_id, item_id, status: 'pending_offer' })
@@ -99,7 +109,7 @@ export async function updateTradeStatusAction(
       .select('id')
       .eq('item_id', trade.item_id)
       .neq('id', tradeId)
-      .in('status', ['in_progress', 'completed'])
+      .in('status', ['in_progress'])
       .limit(1)
       .maybeSingle()
 
@@ -242,7 +252,7 @@ export async function updateAgreedTermsAction(
 // System event messages inserted into the chat when milestone transitions occur.
 // Keyed by the new status.
 const SYSTEM_EVENTS: Partial<Record<TradeStatus, { content: string; event_type: string }>> = {
-  accepted: { content: 'Deal accepted', event_type: 'status:accepted' },
+  accepted: { content: 'Swap request accepted', event_type: 'status:accepted' },
   in_progress: { content: 'Pickup confirmed', event_type: 'status:in_progress' },
   completed: { content: 'Return confirmed', event_type: 'status:completed' },
   cancelled: { content: 'Trade cancelled', event_type: 'status:cancelled' },
