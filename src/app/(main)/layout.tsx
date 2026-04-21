@@ -2,8 +2,16 @@
 // Layout shell for the authenticated app area.
 
 import Link from 'next/link'
+import { MessageSquare } from 'lucide-react'
+import { createClient } from '@/lib/supabase/server'
+import UserMenu from '@/components/UserMenu'
 
-export default function MainLayout({ children }: { children: React.ReactNode }) {
+export default async function MainLayout({ children }: { children: React.ReactNode }) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="border-b border-gray-200 bg-white">
@@ -18,15 +26,20 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
             <Link href="/trades" className="text-gray-600 hover:text-gray-900">
               Trades
             </Link>
-            <Link href="/profile" className="text-gray-600 hover:text-gray-900">
-              Profile
-            </Link>
             <Link
               href="/listings/new"
               className="rounded-md bg-green-600 px-3 py-1.5 font-medium text-white hover:bg-green-700"
             >
               Post an item
             </Link>
+            <Link
+              href="/chat"
+              className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <MessageSquare className="h-4 w-4" />
+              Chat
+            </Link>
+            {user && <UserMenu email={user.email ?? ''} />}
           </nav>
         </div>
       </header>

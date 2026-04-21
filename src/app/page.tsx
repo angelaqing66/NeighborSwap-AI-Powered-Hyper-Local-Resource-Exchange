@@ -1,5 +1,16 @@
 import Link from 'next/link'
-import { ShieldCheck, Search, ArrowLeftRight, Wrench, Scissors, Sprout, Leaf } from 'lucide-react'
+import {
+  ShieldCheck,
+  Search,
+  ArrowLeftRight,
+  Wrench,
+  Scissors,
+  Sprout,
+  Leaf,
+  MessageSquare,
+} from 'lucide-react'
+import { createClient } from '@/lib/supabase/server'
+import UserMenu from '@/components/UserMenu'
 
 // ── Category data ─────────────────────────────────────────────────────────────
 
@@ -32,7 +43,12 @@ const HOW_IT_WORKS = [
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function Home() {
+export default async function Home() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
       {/* ── Nav ── */}
@@ -48,18 +64,33 @@ export default function Home() {
 
           {/* Auth actions */}
           <nav className="flex items-center gap-3">
-            <Link
-              href="/login"
-              className="rounded-md border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              Log In
-            </Link>
-            <Link
-              href="/register"
-              className="rounded-md bg-green-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-green-700 transition-colors"
-            >
-              Sign Up
-            </Link>
+            {user ? (
+              <>
+                <Link
+                  href="/chat"
+                  className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  Chat
+                </Link>
+                <UserMenu email={user.email ?? ''} />
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="rounded-md border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Log In
+                </Link>
+                <Link
+                  href="/register"
+                  className="rounded-md bg-green-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-green-700 transition-colors"
+                >
+                  Sign Up
+                </Link>
+              </>
+            )}
           </nav>
         </div>
       </header>
