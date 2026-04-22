@@ -9,6 +9,7 @@ export interface UserProfile {
   full_name: string | null
   avatar_url: string | null
   trust_score: number // 0–100, default 50
+  is_admin: boolean
   created_at: string // ISO-8601
   updated_at: string // ISO-8601
 }

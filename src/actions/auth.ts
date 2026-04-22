@@ -99,6 +99,31 @@ export async function signInAction(
 }
 
 // ---------------------------------------------------------------------------
+// signInAsAdminAction
+//
+// Quick-login for the demo admin account. Credentials live server-side only.
+// On success → redirects to / (app home).
+// On failure → returns { error: message }.
+// ---------------------------------------------------------------------------
+export async function signInAsAdminAction(
+  _prevState: AuthActionResult,
+  _formData: FormData
+): Promise<AuthActionResult> {
+  const supabase = await createClient()
+
+  const { error } = await supabase.auth.signInWithPassword({
+    email: 'neighborswapAdmin@gmail.com',
+    password: '12345678',
+  })
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  redirect('/')
+}
+
+// ---------------------------------------------------------------------------
 // signOutAction
 //
 // Signs out the current user and redirects to the home page.
