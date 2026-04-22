@@ -139,6 +139,56 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ---
 
+## Test Coverage
+
+> Run `npm run test:coverage` to regenerate the HTML report at `coverage/index.html`.
+
+### Unit Tests (Vitest) — 348 tests · 14 files
+
+| File | Tests | Statements | Branches | Functions |
+|------|-------|-----------|---------|---------|
+| `src/actions/trades.ts` | 71 | 97.3% | 98.7% | 100% |
+| `src/actions/messages.ts` | 22 | 100% | 100% | 100% |
+| `src/actions/reviews.ts` | 22 | 87.4% | 100% | 50% |
+| `src/actions/listings.ts` | 16 | 100% | 96.2% | 100% |
+| `src/actions/auth.ts` | 13 | 93.3% | 89.5% | 75% |
+| `src/lib/agents/safety.ts` | 37 | 91.5% | 69.4% | 100% |
+| `src/lib/agents/sentiment.ts` | 27 | 100% | 100% | 100% |
+| `src/lib/agents/groq-client.ts` | 21 | 93.4% | 91.7% | 100% |
+| `src/lib/agents/vibe.ts` | 21 | 98.6% | 90.5% | 100% |
+| `src/lib/agents/runner.ts` | 20 | 100% | 100% | 100% |
+| `src/lib/agents/logistics.ts` | 19 | 98.7% | 92.0% | 100% |
+| `src/components/chat/TradeStatusPanel.tsx` | 39 | 58.3% | 100% | 50% |
+| `src/lib/getDevStats.ts` | 14 | 100% | 100% | 100% |
+| `src/lib/listings.ts` | 6 | 100% | 85.7% | 100% |
+| **Business Logic Total** | **348** | **89.5%** | **93.2%** | **91.4%** |
+
+> UI pages (`src/app/**`) and chat UI components are covered by Playwright E2E tests.
+> Coverage scope and 70% threshold are enforced in `vitest.config.ts`.
+
+### E2E Tests (Playwright) — 11 tests · 3 suites
+
+| Suite | Tests | What it covers |
+|-------|-------|---------------|
+| `e2e/smoke.spec.ts` | 3 | Home page load, login/register reachability |
+| `e2e/marketplace.spec.ts` | 4 | Listing feed, search input, item card navigation |
+| `e2e/item-detail.spec.ts` | 4 | Item detail page, 404 handling, back navigation |
+
+### TDD Red → Green → Refactor Evidence
+
+Features built test-first — red/green commits visible in `git log`:
+
+| Feature | Red phase | Green phase |
+|---------|-----------|------------|
+| Marketplace search & filter | `test(marketplace): failing tests … (TDD red phase)` | `feat(marketplace): search bar and filter … (TDD green phase)` |
+| Item detail + trade creation | `test(item-detail): failing tests … (TDD red phase)` | `feat(item-detail): item detail page … (TDD green phase)` |
+| AI Agent runner | `Written BEFORE implementation — TDD red phase` (runner.test.ts) | `feat(agents): sub-agent evidence — runner tests, LLM-as-judge evals` |
+| Safety agent (PII redaction) | `Written BEFORE implementation — TDD red phase` (safety.test.ts) | `feat(safety): message-level PII redaction and phishing link detection` |
+| Logistics agent | `Written BEFORE implementation — TDD red phase` (logistics.test.ts) | `feat(agents): logistics agent implementation` |
+| Listings query helper | `Written BEFORE implementation — TDD red phase` (getListings.test.ts) | `feat(marketplace): search bar and filter … (TDD green phase)` |
+
+---
+
 ## Available Scripts
 
 | Command | Description |
@@ -146,6 +196,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run dev` | Start the Next.js development server |
 | `npm run build` | Production build |
 | `npm run test` | Run all unit tests (Vitest) |
+| `npm run test:coverage` | Run tests and generate coverage report (`coverage/`) |
 | `npx vitest run src/path/to/file.test.ts` | Run a single test file |
 | `npx vitest` | Tests in watch mode |
 | `npm run lint` | ESLint |
