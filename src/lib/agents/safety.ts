@@ -60,6 +60,13 @@ const PII_PATTERNS: RegExp[] = [
 
   // Email addresses
   /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g,
+
+  // SSNs — formatted with dashes or spaces: 123-45-6789 | 123 45 6789
+  /\b\d{3}[-\s]\d{2}[-\s]\d{4}\b/g,
+
+  // Physical street addresses: "123 Main St", "456 Oak Avenue Apt 2B"
+  // Matches: house number + 1–3 words + street-type keyword + optional unit
+  /\b\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+){0,2}\s+(?:Street|Avenue|Boulevard|Road|Drive|Lane|Court|Place|Way|Circle|Terrace|Trail|Square|St|Ave|Blvd|Rd|Dr|Ln|Ct|Pl)\.?(?:\s+(?:Apt|Suite|Unit|Ste)\.?\s*[\w-]+)?\b/gi,
 ]
 
 export function redactPii(text: string): string {
@@ -157,6 +164,135 @@ function parseResponse(raw: string): SafetyAgentOutput {
     reasoning,
     redacted_description: typeof redacted_description === 'string' ? redacted_description : null,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Message safety — interfaces, prompts, parser, and agent function
+//
+// Distinct from runSafety (listing-level) — this function scans a single
+// chat message for PII and phishing links in real time.
+// ---------------------------------------------------------------------------
+
+export interface MessageSafetyInput {
+  trade_id: string // audit correlation only — not sent to Groq
+  sender_id: string // audit correlation only — not sent to Groq
+  content: string // raw message text from the sender
+}
+
+export interface MessageSafetyOutput {
+  verdict: ModerationVerdict // 'allow' | 'block' | 'review'
+  confidence: number // 0.0–1.0
+  reasoning: string
+  redacted_content: string // message with PII replaced; equals original if nothing found
+  has_phishing_link: boolean // true when a suspicious/phishing URL is detected
+}
+
+const MESSAGE_SAFETY_SYSTEM_PROMPT = `You are a real-time chat safety agent for NeighborSwap, a hyper-local resource exchange platform.
+
+Your job is to scan a single chat message and:
+1. Redact any PII (personally identifiable information): SSNs (xxx-xx-xxxx), physical street addresses, phone numbers, and email addresses.
+2. Detect suspicious or phishing URLs: lookalike brand domains, IP-address URLs, URL shorteners used suspiciously, or links with suspicious TLDs (.xyz, .tk, .ml, .cf, .ga, .gq) that appear transactional.
+
+You must respond with a single JSON object — no markdown, no explanation outside the object.
+
+Response schema:
+{
+  "verdict": "allow" | "block" | "review",
+  "confidence": <number between 0.0 and 1.0>,
+  "reasoning": "<one or two sentences explaining the verdict>",
+  "redacted_content": "<full message with any PII replaced by [REDACTED] — return the original text unchanged if no PII is found>",
+  "has_phishing_link": <true | false>
+}
+
+Verdict rules:
+- "allow"  — message is clean: no PII, no suspicious links.
+- "block"  — message contains an obvious phishing link or clearly malicious content. Set confidence >= 0.85.
+- "review" — message contains redacted PII, an ambiguous URL, or anything requiring human review.
+
+Redaction rules:
+- Replace every SSN, street address, phone number, and email with [REDACTED].
+- If no PII is present, return the original message text unchanged in "redacted_content".
+- Never include the original PII value anywhere in your response.
+
+Phishing detection:
+- Set has_phishing_link: true if a URL: (a) mimics a known brand with a slight misspelling, (b) uses a raw IP address instead of a domain, (c) uses suspicious TLDs for what appears to be a transactional link, or (d) is used in a suspicious context.
+- Legitimate URLs like google.com, amazon.com, maps.google.com, youtube.com are not phishing links.`
+
+const MESSAGE_PARSE_ERROR_DEFAULT: Omit<MessageSafetyOutput, 'redacted_content'> = {
+  verdict: 'review',
+  confidence: 0,
+  reasoning: 'Safety agent could not parse the model response. Message routed for review.',
+  has_phishing_link: false,
+}
+
+function parseMessageResponse(raw: string, fallbackContent: string): MessageSafetyOutput {
+  let parsed: unknown
+
+  try {
+    const cleaned = raw
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/, '')
+      .trim()
+    parsed = JSON.parse(cleaned)
+  } catch {
+    return { ...MESSAGE_PARSE_ERROR_DEFAULT, redacted_content: fallbackContent }
+  }
+
+  if (typeof parsed !== 'object' || parsed === null) {
+    return { ...MESSAGE_PARSE_ERROR_DEFAULT, redacted_content: fallbackContent }
+  }
+
+  const { verdict, confidence, reasoning, redacted_content, has_phishing_link } = parsed as Record<
+    string,
+    unknown
+  >
+
+  if (verdict !== 'allow' && verdict !== 'block' && verdict !== 'review') {
+    return { ...MESSAGE_PARSE_ERROR_DEFAULT, redacted_content: fallbackContent }
+  }
+
+  if (typeof confidence !== 'number' || confidence < 0 || confidence > 1) {
+    return { ...MESSAGE_PARSE_ERROR_DEFAULT, redacted_content: fallbackContent }
+  }
+
+  if (typeof reasoning !== 'string' || reasoning.trim() === '') {
+    return { ...MESSAGE_PARSE_ERROR_DEFAULT, redacted_content: fallbackContent }
+  }
+
+  const finalContent =
+    typeof redacted_content === 'string' && redacted_content.trim() !== ''
+      ? redacted_content
+      : fallbackContent
+
+  return {
+    verdict,
+    confidence,
+    reasoning,
+    redacted_content: finalContent,
+    has_phishing_link: has_phishing_link === true,
+  }
+}
+
+export async function runMessageSafety(input: MessageSafetyInput): Promise<MessageSafetyOutput> {
+  // Client-side pre-pass: strip known PII patterns before content reaches Groq.
+  const prePassContent = redactPii(input.content)
+
+  let raw: string
+
+  try {
+    raw = await callGroq(MESSAGE_SAFETY_SYSTEM_PROMPT, `Chat message:\n${prePassContent}`)
+  } catch (err) {
+    const message = err instanceof GroqError ? err.message : 'Unknown error contacting Groq API'
+    return {
+      verdict: 'review',
+      confidence: 0,
+      reasoning: `Message safety agent unavailable — routed for review. (${message})`,
+      redacted_content: prePassContent,
+      has_phishing_link: false,
+    }
+  }
+
+  return parseMessageResponse(raw, prePassContent)
 }
 
 // ---------------------------------------------------------------------------

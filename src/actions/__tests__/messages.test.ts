@@ -8,8 +8,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockGetUser = vi.fn()
 const mockTradeSingle = vi.fn()
-const mockMessageSingle = vi.fn()
 const mockEmitToRoom = vi.fn()
+const mockRunMessageSafety = vi.fn()
 
 // Chain: from('trades').select(...).eq('id', x).single()
 const mockTradeEq = vi.fn()
@@ -17,11 +17,8 @@ const mockTradeSelect = vi.fn()
 mockTradeSelect.mockReturnValue({ eq: mockTradeEq })
 mockTradeEq.mockReturnValue({ single: mockTradeSingle })
 
-// Chain: from('messages').insert(...).select().single()
-const mockMessageSelect = vi.fn()
+// insert(...) is awaited directly — mockResolvedValue makes it return a Promise
 const mockMessageInsert = vi.fn()
-mockMessageInsert.mockReturnValue({ select: mockMessageSelect })
-mockMessageSelect.mockReturnValue({ single: mockMessageSingle })
 
 vi.mock('@/lib/socket/emitter', () => ({ emitToRoom: mockEmitToRoom }))
 
@@ -34,6 +31,10 @@ vi.mock('@/lib/supabase/server', () => ({
       return {}
     }),
   }),
+}))
+
+vi.mock('@/lib/agents/safety', () => ({
+  runMessageSafety: mockRunMessageSafety,
 }))
 
 // Lazy import AFTER mocks are hoisted
@@ -63,12 +64,19 @@ describe('sendMessageAction', () => {
     vi.clearAllMocks()
     mockGetUser.mockResolvedValue({ data: { user: AUTHED_USER } })
     mockTradeSingle.mockResolvedValue({ data: TRADE, error: null })
-    mockMessageSingle.mockResolvedValue({ data: STORED_MESSAGE, error: null })
+    // insert() is awaited directly — resolve to success by default
+    mockMessageInsert.mockResolvedValue({ error: null })
     // Restore chain returns after clearAllMocks
     mockTradeSelect.mockReturnValue({ eq: mockTradeEq })
     mockTradeEq.mockReturnValue({ single: mockTradeSingle })
-    mockMessageInsert.mockReturnValue({ select: mockMessageSelect })
-    mockMessageSelect.mockReturnValue({ single: mockMessageSingle })
+    // Default safety mock: clean message, no redaction
+    mockRunMessageSafety.mockResolvedValue({
+      verdict: 'allow',
+      confidence: 0.99,
+      reasoning: 'No issues found.',
+      redacted_content: CONTENT,
+      has_phishing_link: false,
+    })
   })
 
   // ── Input validation ────────────────────────────────────────────────────────
@@ -133,7 +141,7 @@ describe('sendMessageAction', () => {
   // ── DB ──────────────────────────────────────────────────────────────────────
 
   it('returns error when DB insert fails', async () => {
-    mockMessageSingle.mockResolvedValue({ data: null, error: { message: 'RLS violation' } })
+    mockMessageInsert.mockResolvedValueOnce({ error: { message: 'RLS violation', code: '42501' } })
     const result = await sendMessageAction(TRADE_ID, CONTENT)
     expect(result.error).toMatch(/failed to send/i)
     expect(mockEmitToRoom).not.toHaveBeenCalled()
@@ -167,16 +175,16 @@ describe('sendMessageAction', () => {
     await sendMessageAction(TRADE_ID, CONTENT)
     const [, , payload] = mockEmitToRoom.mock.calls[0]
     expect(payload).toMatchObject({
-      id: STORED_MESSAGE.id,
       trade_id: TRADE_ID,
       sender_id: USER_ID,
       content: CONTENT,
     })
+    expect((payload as Record<string, unknown>).id).toMatch(/^[0-9a-f-]{36}$/)
     expect((payload as Record<string, unknown>).sent_at).toMatch(/^\d{4}-\d{2}-\d{2}T/)
   })
 
   it('does not emit when DB insert fails', async () => {
-    mockMessageSingle.mockResolvedValue({ data: null, error: { message: 'error' } })
+    mockMessageInsert.mockResolvedValueOnce({ error: { message: 'error', code: 'XX000' } })
     await sendMessageAction(TRADE_ID, CONTENT)
     expect(mockEmitToRoom).not.toHaveBeenCalled()
   })
@@ -187,10 +195,112 @@ describe('sendMessageAction', () => {
     const result = await sendMessageAction(TRADE_ID, CONTENT)
     expect(result.error).toBeNull()
     expect(result.message).toMatchObject({
-      id: STORED_MESSAGE.id,
       trade_id: TRADE_ID,
       sender_id: USER_ID,
       content: CONTENT,
     })
+    // id is a pre-generated UUID — just verify it looks like one
+    expect(result.message?.id).toMatch(/^[0-9a-f-]{36}$/)
+  })
+
+  it('returns safety_flags on success', async () => {
+    const result = await sendMessageAction(TRADE_ID, CONTENT)
+    expect(result.safety_flags).toBeDefined()
+    expect(result.safety_flags?.verdict).toBe('allow')
+    expect(result.safety_flags?.was_redacted).toBe(false)
+    expect(result.safety_flags?.has_phishing_link).toBe(false)
+  })
+
+  // ── Safety scanning ─────────────────────────────────────────────────────────
+
+  it('blocks message when safety agent returns block verdict', async () => {
+    mockRunMessageSafety.mockResolvedValueOnce({
+      verdict: 'block',
+      confidence: 0.92,
+      reasoning: 'Phishing link detected.',
+      redacted_content: 'Click here: http://paypa1.com',
+      has_phishing_link: true,
+    })
+
+    const result = await sendMessageAction(TRADE_ID, 'Click here: http://paypa1.com')
+    expect(result.error).toMatch(/blocked/i)
+    expect(mockMessageInsert).not.toHaveBeenCalled()
+    expect(mockEmitToRoom).not.toHaveBeenCalled()
+  })
+
+  it('stores redacted_content when safety agent redacts PII', async () => {
+    const rawContent = 'Call me at 408-555-0199 to arrange pickup.'
+    const redactedContent = 'Call me at [REDACTED] to arrange pickup.'
+
+    mockRunMessageSafety.mockResolvedValueOnce({
+      verdict: 'review',
+      confidence: 0.88,
+      reasoning: 'Phone number redacted.',
+      redacted_content: redactedContent,
+      has_phishing_link: false,
+    })
+
+    await sendMessageAction(TRADE_ID, rawContent)
+
+    const insertPayload = mockMessageInsert.mock.calls[0][0]
+    expect(insertPayload.content).toBe(redactedContent)
+    expect(insertPayload.content).not.toContain('408-555-0199')
+  })
+
+  it('emits redacted_content (not raw content) to socket room', async () => {
+    const rawContent = 'My SSN is 123-45-6789.'
+    const redactedContent = 'My SSN is [REDACTED].'
+
+    mockRunMessageSafety.mockResolvedValueOnce({
+      verdict: 'review',
+      confidence: 0.9,
+      reasoning: 'SSN redacted.',
+      redacted_content: redactedContent,
+      has_phishing_link: false,
+    })
+
+    await sendMessageAction(TRADE_ID, rawContent)
+
+    const [, , emittedPayload] = mockEmitToRoom.mock.calls[0]
+    expect((emittedPayload as Record<string, unknown>).content).toBe(redactedContent)
+    expect((emittedPayload as Record<string, unknown>).content).not.toContain('123-45-6789')
+  })
+
+  it('returns was_redacted: true when content was changed by safety agent', async () => {
+    mockRunMessageSafety.mockResolvedValueOnce({
+      verdict: 'review',
+      confidence: 0.88,
+      reasoning: 'Email address redacted.',
+      redacted_content: 'Email me at [REDACTED].',
+      has_phishing_link: false,
+    })
+
+    const result = await sendMessageAction(TRADE_ID, 'Email me at alice@example.com.')
+    expect(result.safety_flags?.was_redacted).toBe(true)
+  })
+
+  it('returns has_phishing_link: true when safety agent flags a suspicious URL', async () => {
+    mockRunMessageSafety.mockResolvedValueOnce({
+      verdict: 'review',
+      confidence: 0.75,
+      reasoning: 'Ambiguous URL detected, routed for review.',
+      redacted_content: 'Check this out: http://amaz0n.xyz',
+      has_phishing_link: true,
+    })
+
+    const result = await sendMessageAction(TRADE_ID, 'Check this out: http://amaz0n.xyz')
+    expect(result.safety_flags?.has_phishing_link).toBe(true)
+  })
+
+  it('passes trade_id and sender_id to runMessageSafety', async () => {
+    await sendMessageAction(TRADE_ID, CONTENT)
+
+    expect(mockRunMessageSafety).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trade_id: TRADE_ID,
+        sender_id: USER_ID,
+        content: CONTENT,
+      })
+    )
   })
 })

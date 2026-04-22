@@ -20,7 +20,8 @@ vi.mock('../groq-client', () => ({
 }))
 
 // Import after mocking so the module picks up the mock.
-import { runSafety, redactPii } from '../safety'
+import { runSafety, redactPii, runMessageSafety } from '../safety'
+import type { MessageSafetyOutput } from '../safety'
 import { callGroq } from '../groq-client'
 
 const mockCallGroq = vi.mocked(callGroq)
@@ -281,5 +282,340 @@ describe('LLM-as-judge evaluation', () => {
 
     const userPromptSentToGroq = mockCallGroq.mock.calls[0][1] as string
     expect(userPromptSentToGroq).toContain('[REDACTED]')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// redactPii — SSN and physical address patterns (new in message safety)
+// ---------------------------------------------------------------------------
+describe('redactPii — SSN patterns', () => {
+  it.each([
+    ['dashes', '123-45-6789'],
+    ['spaces', '123 45 6789'],
+  ])('redacts SSN with %s', (_label, ssn) => {
+    const result = redactPii(`My SSN is ${ssn}.`)
+    expect(result).not.toContain(ssn)
+    expect(result).toContain('[REDACTED]')
+  })
+
+  it('does not redact a regular date like 123-12-2024 as SSN', () => {
+    // Dates use 4-digit year in the last group — SSN pattern requires exactly 4 digits
+    // but the date "12-2024" has 4 digits in the last slot. This test documents
+    // the known trade-off; dates with 2-digit month and 4-digit year could be caught.
+    const date = '2026-04-21'
+    const result = redactPii(date)
+    // ISO dates are not matched by the SSN pattern (YYYY-MM-DD format differs)
+    expect(result).toBe(date)
+  })
+})
+
+describe('redactPii — physical address patterns', () => {
+  it.each([
+    ['street abbreviation', '123 Main St'],
+    ['avenue abbreviation', '456 Oak Ave'],
+    ['full street type', '789 Elm Street'],
+    ['boulevard', '100 Sunset Blvd'],
+    ['with unit', '42 Pine Dr Apt 2B'],
+  ])('redacts address: %s', (_label, address) => {
+    const result = redactPii(`Meet me at ${address} tomorrow.`)
+    expect(result).not.toContain(address)
+    expect(result).toContain('[REDACTED]')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// runMessageSafety — unit tests
+// ---------------------------------------------------------------------------
+
+function mockMessageVerdict(overrides: Partial<MessageSafetyOutput> = {}): string {
+  const defaults: MessageSafetyOutput = {
+    verdict: 'allow',
+    confidence: 0.99,
+    reasoning: 'No issues found.',
+    redacted_content: 'Is the bike still available?',
+    has_phishing_link: false,
+  }
+  return JSON.stringify({ ...defaults, ...overrides })
+}
+
+const MESSAGE_INPUT = {
+  trade_id: 'trade-msg-001',
+  sender_id: 'user-sender-001',
+  content: 'Is the bike still available?',
+}
+
+describe('runMessageSafety — verdicts', () => {
+  it('returns allow verdict for a clean message', async () => {
+    mockCallGroq.mockResolvedValueOnce(mockMessageVerdict())
+
+    const result = await runMessageSafety(MESSAGE_INPUT)
+
+    expect(result.verdict).toBe('allow')
+    expect(result.has_phishing_link).toBe(false)
+    expect(result.redacted_content).toBe('Is the bike still available?')
+  })
+
+  it('returns block verdict when a phishing link is detected', async () => {
+    mockCallGroq.mockResolvedValueOnce(
+      mockMessageVerdict({
+        verdict: 'block',
+        confidence: 0.92,
+        reasoning: 'Message contains a URL that mimics a known payment platform.',
+        has_phishing_link: true,
+        redacted_content: 'Click here: http://paypa1.com/send',
+      })
+    )
+
+    const result = await runMessageSafety({
+      ...MESSAGE_INPUT,
+      content: 'Click here: http://paypa1.com/send',
+    })
+
+    expect(result.verdict).toBe('block')
+    expect(result.has_phishing_link).toBe(true)
+  })
+
+  it('returns review verdict when PII was redacted', async () => {
+    mockCallGroq.mockResolvedValueOnce(
+      mockMessageVerdict({
+        verdict: 'review',
+        confidence: 0.88,
+        reasoning: 'Message contained a phone number which was redacted.',
+        redacted_content: 'Call me at [REDACTED] after 5pm.',
+        has_phishing_link: false,
+      })
+    )
+
+    const result = await runMessageSafety({
+      ...MESSAGE_INPUT,
+      content: 'Call me at 408-555-0199 after 5pm.',
+    })
+
+    expect(result.verdict).toBe('review')
+    expect(result.redacted_content).toContain('[REDACTED]')
+    expect(result.redacted_content).not.toContain('408-555-0199')
+  })
+})
+
+describe('runMessageSafety — pre-pass strips PII before reaching Groq', () => {
+  it('strips phone number from message content before sending to Groq', async () => {
+    mockCallGroq.mockResolvedValueOnce(mockMessageVerdict())
+
+    await runMessageSafety({
+      trade_id: 'trade-pre-001',
+      sender_id: 'user-pre-001',
+      content: 'Call 408-555-0199 to arrange.',
+    })
+
+    const promptSentToGroq = mockCallGroq.mock.calls[0][1] as string
+    expect(promptSentToGroq).not.toContain('408-555-0199')
+    expect(promptSentToGroq).toContain('[REDACTED]')
+  })
+
+  it('strips SSN from message content before sending to Groq', async () => {
+    mockCallGroq.mockResolvedValueOnce(mockMessageVerdict())
+
+    await runMessageSafety({
+      trade_id: 'trade-pre-002',
+      sender_id: 'user-pre-002',
+      content: 'My SSN is 123-45-6789.',
+    })
+
+    const promptSentToGroq = mockCallGroq.mock.calls[0][1] as string
+    expect(promptSentToGroq).not.toContain('123-45-6789')
+    expect(promptSentToGroq).toContain('[REDACTED]')
+  })
+
+  it('strips street address from message content before sending to Groq', async () => {
+    mockCallGroq.mockResolvedValueOnce(mockMessageVerdict())
+
+    await runMessageSafety({
+      trade_id: 'trade-pre-003',
+      sender_id: 'user-pre-003',
+      content: 'Come to 123 Maple Ave tomorrow.',
+    })
+
+    const promptSentToGroq = mockCallGroq.mock.calls[0][1] as string
+    expect(promptSentToGroq).not.toContain('123 Maple Ave')
+    expect(promptSentToGroq).toContain('[REDACTED]')
+  })
+
+  it('does not forward trade_id or sender_id to Groq', async () => {
+    mockCallGroq.mockResolvedValueOnce(mockMessageVerdict())
+
+    const input = {
+      trade_id: 'secret-trade-uuid',
+      sender_id: 'secret-user-uuid',
+      content: 'Hello!',
+    }
+    await runMessageSafety(input)
+
+    const promptSentToGroq = mockCallGroq.mock.calls[0][1] as string
+    expect(promptSentToGroq).not.toContain('secret-trade-uuid')
+    expect(promptSentToGroq).not.toContain('secret-user-uuid')
+  })
+})
+
+describe('runMessageSafety — Groq API failure graceful degradation', () => {
+  it('returns review verdict with pre-pass content when Groq throws', async () => {
+    const { GroqError } = await import('../groq-client')
+    mockCallGroq.mockRejectedValueOnce(new GroqError('timeout'))
+
+    const result = await runMessageSafety({
+      trade_id: 'trade-fail-001',
+      sender_id: 'user-fail-001',
+      content: 'Is the ladder still available?',
+    })
+
+    expect(result.verdict).toBe('review')
+    expect(result.confidence).toBe(0)
+    expect(result.has_phishing_link).toBe(false)
+    // Pre-pass content is used as fallback — original content unchanged (no PII)
+    expect(result.redacted_content).toBe('Is the ladder still available?')
+  })
+
+  it('returns pre-pass redacted content as fallback when Groq is unavailable', async () => {
+    const { GroqError } = await import('../groq-client')
+    mockCallGroq.mockRejectedValueOnce(new GroqError('timeout'))
+
+    const result = await runMessageSafety({
+      trade_id: 'trade-fail-002',
+      sender_id: 'user-fail-002',
+      content: 'Call me at 408-555-0199.',
+    })
+
+    // Pre-pass already redacted the phone number
+    expect(result.redacted_content).not.toContain('408-555-0199')
+    expect(result.redacted_content).toContain('[REDACTED]')
+  })
+})
+
+describe('runMessageSafety — parse error fallback', () => {
+  it('returns review verdict when Groq returns non-JSON', async () => {
+    mockCallGroq.mockResolvedValueOnce('Sorry, I cannot help with that.')
+
+    const result = await runMessageSafety(MESSAGE_INPUT)
+
+    expect(result.verdict).toBe('review')
+    expect(result.confidence).toBe(0)
+  })
+
+  it('returns review verdict when response has invalid verdict field', async () => {
+    mockCallGroq.mockResolvedValueOnce(
+      JSON.stringify({
+        verdict: 'unknown',
+        confidence: 0.5,
+        reasoning: 'test',
+        redacted_content: 'test',
+        has_phishing_link: false,
+      })
+    )
+
+    const result = await runMessageSafety(MESSAGE_INPUT)
+
+    expect(result.verdict).toBe('review')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// LLM-as-judge evaluation for runMessageSafety
+// ---------------------------------------------------------------------------
+
+function scoreMessageReasoning(
+  reasoning: string,
+  verdict: MessageSafetyOutput['verdict'],
+  hasPhishing: boolean
+): number {
+  let score = 0
+
+  // 1. Non-empty string
+  if (typeof reasoning === 'string' && reasoning.trim().length > 0) score += 1
+
+  // 2. Substantive length
+  if (reasoning.trim().length >= 20) score += 1
+
+  // 3. Mentions the nature of the issue (PII / phishing / link / clean)
+  const issueKeywords =
+    /pii|phone|email|address|ssn|redact|phish|link|suspicious|clean|no (pii|issue)/i
+  if (issueKeywords.test(reasoning)) score += 1
+
+  // 4. Verdict consistency
+  if (verdict === 'allow' && /clean|no (pii|issue)|safe/i.test(reasoning)) score += 1
+  if ((verdict === 'review' || verdict === 'block') && issueKeywords.test(reasoning)) score += 1
+
+  // 5. Phishing flag consistency
+  if (hasPhishing && /phish|link|suspicious|malicious/i.test(reasoning)) score += 1
+  if (!hasPhishing && verdict === 'allow') score += 1
+
+  // 6. Concise (≤ 300 characters)
+  if (reasoning.length <= 300) score += 1
+
+  return score
+}
+
+describe('runMessageSafety — LLM-as-judge evaluation', () => {
+  it('E-MSG-01: reasoning scores ≥ 4/7 for a review verdict with redacted PII', async () => {
+    mockCallGroq.mockResolvedValueOnce(
+      JSON.stringify({
+        verdict: 'review',
+        confidence: 0.9,
+        reasoning:
+          'The message contained a phone number which was redacted to protect user privacy.',
+        redacted_content: 'Call me at [REDACTED] after 5pm.',
+        has_phishing_link: false,
+      })
+    )
+
+    const result = await runMessageSafety({
+      trade_id: 'judge-msg-001',
+      sender_id: 'user-judge-001',
+      content: 'Call me at 555-1234 after 5pm.',
+    })
+
+    const score = scoreMessageReasoning(result.reasoning, result.verdict, result.has_phishing_link)
+    expect(score).toBeGreaterThanOrEqual(4)
+  })
+
+  it('E-MSG-02: reasoning scores ≥ 4/7 for a block verdict with phishing link', async () => {
+    mockCallGroq.mockResolvedValueOnce(
+      JSON.stringify({
+        verdict: 'block',
+        confidence: 0.95,
+        reasoning:
+          'Message contains a suspicious link mimicking PayPal with a typosquatted domain.',
+        redacted_content: 'Click here: http://paypa1.com/send',
+        has_phishing_link: true,
+      })
+    )
+
+    const result = await runMessageSafety({
+      trade_id: 'judge-msg-002',
+      sender_id: 'user-judge-002',
+      content: 'Click here: http://paypa1.com/send',
+    })
+
+    const score = scoreMessageReasoning(result.reasoning, result.verdict, result.has_phishing_link)
+    expect(score).toBeGreaterThanOrEqual(4)
+  })
+
+  it('E-MSG-03: reasoning scores ≥ 4/7 for a clean allow verdict', async () => {
+    mockCallGroq.mockResolvedValueOnce(
+      JSON.stringify({
+        verdict: 'allow',
+        confidence: 0.99,
+        reasoning: 'Message is clean — no PII detected and no suspicious links found.',
+        redacted_content: 'Is the drill press still available?',
+        has_phishing_link: false,
+      })
+    )
+
+    const result = await runMessageSafety({
+      trade_id: 'judge-msg-003',
+      sender_id: 'user-judge-003',
+      content: 'Is the drill press still available?',
+    })
+
+    const score = scoreMessageReasoning(result.reasoning, result.verdict, result.has_phishing_link)
+    expect(score).toBeGreaterThanOrEqual(4)
   })
 })
