@@ -6,7 +6,7 @@ export interface Review {
   trade_id: string
   reviewer_id: string
   reviewee_id: string
-  score: number // 1–5
+  score: number // 1–100
   comment: string | null
   sentiment_score: number | null // 0–100
   created_at: string // ISO-8601
@@ -14,6 +14,10 @@ export interface Review {
 
 export interface SubmitReviewInput {
   trade_id: string
-  score: number
+  score: number // 1–100
   comment: string | null
+}
+
+export interface SubmitReviewResult {
+  error: string | null
 }
