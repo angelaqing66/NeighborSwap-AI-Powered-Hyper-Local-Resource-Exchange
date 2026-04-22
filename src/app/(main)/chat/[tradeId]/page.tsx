@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import ChatWindow from '@/components/chat/ChatWindow'
 import TradeStatusPanel from '@/components/chat/TradeStatusPanel'
+import { ReviewForm } from '@/components/trades/ReviewForm'
 import type { Message } from '@/types/messages'
 import type { Trade } from '@/types/trades'
 
@@ -42,6 +43,9 @@ export default async function TradeChatPage({ params }: PageProps) {
     redirect('/chat')
   }
 
+  // Determine if current user is the counterparty (lender) for review eligibility
+  const isCounterparty = t.counterparty_id === user.id
+
   // Fetch item title, counterparty profile, and initial messages in parallel
   const otherId = t.initiator_id === user.id ? t.counterparty_id : t.initiator_id
 
@@ -73,6 +77,26 @@ export default async function TradeChatPage({ params }: PageProps) {
     // Render page with empty data rather than crashing
   }
 
+  // Check if the counterparty already reviewed this trade (only when eligible)
+  let hasExistingReview = false
+  if (isCounterparty && t.status === 'completed') {
+    try {
+      const { data: existingReview } = await supabase
+        .from('reviews')
+        .select('id')
+        .eq('trade_id', tradeId)
+        .eq('reviewer_id', user.id)
+        .maybeSingle()
+      hasExistingReview = existingReview !== null
+    } catch {
+      // If the check fails, default to not showing the form (safe fallback)
+      hasExistingReview = true
+    }
+  }
+
+  // Show review form when: trade is completed, current user is counterparty, no review yet
+  const showReviewForm = t.status === 'completed' && isCounterparty && !hasExistingReview
+
   return (
     <div className="flex h-full flex-col">
       {/* Trade header */}
@@ -95,6 +119,13 @@ export default async function TradeChatPage({ params }: PageProps) {
         initiatorId={t.initiator_id}
         counterpartyId={t.counterparty_id}
       />
+
+      {/* Review form — shown to the lender (counterparty) after trade completes */}
+      {showReviewForm && (
+        <div className="border-b border-gray-100 px-4 py-3">
+          <ReviewForm tradeId={tradeId} />
+        </div>
+      )}
 
       {/* Real-time chat */}
       <ChatWindow

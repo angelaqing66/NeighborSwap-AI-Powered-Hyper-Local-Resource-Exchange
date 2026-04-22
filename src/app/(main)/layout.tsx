@@ -2,7 +2,7 @@
 // Layout shell for the authenticated app area.
 
 import Link from 'next/link'
-import { MessageSquare } from 'lucide-react'
+import { MessageSquare, BarChart2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import UserMenu from '@/components/UserMenu'
 
@@ -38,6 +38,13 @@ export default async function MainLayout({ children }: { children: React.ReactNo
             >
               <MessageSquare className="h-4 w-4" />
               Chat
+            </Link>
+            <Link
+              href="/dev"
+              className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <BarChart2 className="h-4 w-4" />
+              Dev
             </Link>
             {user && <UserMenu email={user.email ?? ''} />}
           </nav>
