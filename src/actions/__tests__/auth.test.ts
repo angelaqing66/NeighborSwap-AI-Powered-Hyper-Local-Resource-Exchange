@@ -24,7 +24,7 @@ vi.mock('next/navigation', () => ({
 }))
 
 // Lazy import AFTER mocks are hoisted
-const { signUpAction, signInAction } = await import('../auth')
+const { signUpAction, signInAction, signInAsAdminAction } = await import('../auth')
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -191,5 +191,52 @@ describe('signInAction', () => {
     expect(mockSignInWithPassword).toHaveBeenCalledWith(
       expect.objectContaining({ email: 'user@example.com' })
     )
+  })
+})
+
+// ── signInAsAdminAction tests ─────────────────────────────────────────────────
+
+describe('signInAsAdminAction', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('calls signInWithPassword with the hardcoded admin credentials', async () => {
+    mockSignInWithPassword.mockResolvedValue({
+      data: { user: { id: 'admin-uid' }, session: { access_token: 'tok' } },
+      error: null,
+    })
+
+    const fd = new FormData()
+    await signInAsAdminAction(prevState, fd)
+
+    expect(mockSignInWithPassword).toHaveBeenCalledOnce()
+    expect(mockSignInWithPassword).toHaveBeenCalledWith({
+      email: 'neighborswapAdmin@gmail.com',
+      password: '12345678',
+    })
+  })
+
+  it('redirects to / on successful admin sign-in', async () => {
+    mockSignInWithPassword.mockResolvedValue({
+      data: { user: { id: 'admin-uid' }, session: { access_token: 'tok' } },
+      error: null,
+    })
+
+    await signInAsAdminAction(prevState, new FormData())
+
+    expect(mockRedirect).toHaveBeenCalledWith('/')
+  })
+
+  it('returns an error when Supabase rejects the admin credentials', async () => {
+    mockSignInWithPassword.mockResolvedValue({
+      data: null,
+      error: { message: 'Invalid login credentials' },
+    })
+
+    const result = await signInAsAdminAction(prevState, new FormData())
+
+    expect(result.error).toBe('Invalid login credentials')
+    expect(mockRedirect).not.toHaveBeenCalled()
   })
 })
