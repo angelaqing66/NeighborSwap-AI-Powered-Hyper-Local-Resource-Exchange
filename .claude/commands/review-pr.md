@@ -52,14 +52,14 @@ Only proceed to Step 2 when all four gates pass (or the user explicitly acknowle
 
 ---
 
-### Step 2 — Stage, commit, and push
+### Step 2 — Stage, commit, and push to GitHub
 
 1. Run `git status` and `git diff` to review all uncommitted changes.
 2. Run `git log --oneline -10` to understand the recent commit history and match the project's commit message style.
-3. Stage only relevant files — do **not** use `git add -A` or `git add .` blindly. Exclude:
+3. If there are uncommitted changes, stage only relevant files — do **not** use `git add -A` or `git add .` blindly. Exclude:
    - `.env*`, `*.local`, credential files
    - Large binaries unrelated to the feature
-4. Write a concise commit message (imperative mood, ≤72 chars subject line) and commit:
+4. If there are staged changes, write a concise commit message (imperative mood, ≤72 chars subject line) and commit:
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -72,20 +72,39 @@ EOF
 )"
 ```
 
-5. Push the branch to the remote:
+5. Push the branch to GitHub. Check whether an upstream is already configured:
 
 ```bash
-git push -u origin <branch-name>
+# Check if upstream is set
+git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null
 ```
+
+- If **no upstream** is set (command fails or returns nothing), push and set it:
+  ```bash
+  git push -u origin <branch-name>
+  ```
+- If **upstream is already set**, push normally:
+  ```bash
+  git push
+  ```
+
+Confirm the push succeeded before continuing.
 
 ---
 
-### Step 3 — Create the pull request
+### Step 3 — Create the pull request on GitHub
 
-Create the PR using `gh pr create`:
+First check whether a PR already exists for this branch:
 
 ```bash
-gh pr create --title "<concise title under 70 chars>" --body "$(cat <<'EOF'
+gh pr view --json url,state 2>/dev/null
+```
+
+- If a PR **already exists** and is open, skip creation and report the existing PR URL to the user. Proceed to Step 4.
+- If **no open PR exists**, create one:
+
+```bash
+gh pr create --title "<concise title under 70 chars>" --base main --body "$(cat <<'EOF'
 ## Summary
 - <bullet 1>
 - <bullet 2>
@@ -115,7 +134,7 @@ EOF
 )"
 ```
 
-Report the PR URL to the user.
+Report the PR URL to the user before continuing.
 
 ---
 
