@@ -14,16 +14,24 @@ interface MessageFormProps {
 export default function MessageForm({ tradeId, tradeStatus }: MessageFormProps) {
   const [content, setContent] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [safetyWarning, setSafetyWarning] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
   function submitMessage(text: string) {
     setError(null)
+    setSafetyWarning(null)
     setContent('')
     startTransition(async () => {
       const result = await sendMessageAction(tradeId, text)
       if (result.error) {
         setError(result.error)
         setContent(text) // restore on failure
+      } else if (result.safety_flags?.was_redacted) {
+        setSafetyWarning(
+          'Some personal information was automatically removed from your message to protect your privacy.'
+        )
+      } else if (result.safety_flags?.has_phishing_link) {
+        setSafetyWarning('A suspicious link was detected in your message. Please be cautious.')
       }
     })
   }
@@ -66,6 +74,7 @@ export default function MessageForm({ tradeId, tradeStatus }: MessageFormProps) 
   return (
     <div className="border-t border-gray-200 p-4">
       {error && <p className="mb-2 text-xs text-red-600">{error}</p>}
+      {safetyWarning && <p className="mb-2 text-xs text-amber-600">{safetyWarning}</p>}
       <form onSubmit={handleSubmit} className="flex items-end gap-2">
         <textarea
           value={content}
