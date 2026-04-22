@@ -8,6 +8,7 @@ import {
   Sprout,
   Leaf,
   MessageSquare,
+  BarChart2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import UserMenu from '@/components/UserMenu'
@@ -49,6 +50,12 @@ export default async function Home() {
     data: { user },
   } = await supabase.auth.getUser()
 
+  let isAdmin = false
+  if (user) {
+    const { data } = await supabase.from('users').select('is_admin').eq('id', user.id).single()
+    isAdmin = data?.is_admin ?? false
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
       {/* ── Nav ── */}
@@ -63,29 +70,50 @@ export default async function Home() {
           </Link>
 
           {/* Auth actions */}
-          <nav className="flex items-center gap-3">
+          <nav className="flex items-center gap-3 text-sm">
             {user ? (
               <>
+                <Link href="/listings" className="text-gray-600 hover:text-gray-900">
+                  Browse
+                </Link>
+                <Link href="/trades" className="text-gray-600 hover:text-gray-900">
+                  Trades
+                </Link>
+                <Link
+                  href="/listings/new"
+                  className="rounded-md bg-green-600 px-3 py-1.5 font-medium text-white hover:bg-green-700"
+                >
+                  Post an item
+                </Link>
                 <Link
                   href="/chat"
-                  className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   <MessageSquare className="h-4 w-4" />
                   Chat
                 </Link>
-                <UserMenu email={user.email ?? ''} />
+                {isAdmin && (
+                  <Link
+                    href="/dev"
+                    className="flex items-center gap-1.5 rounded-md border border-indigo-300 bg-indigo-50 px-3 py-1.5 font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
+                  >
+                    <BarChart2 className="h-4 w-4" />
+                    Dashboard
+                  </Link>
+                )}
+                <UserMenu email={user.email ?? ''} isAdmin={isAdmin} />
               </>
             ) : (
               <>
                 <Link
                   href="/login"
-                  className="rounded-md border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="rounded-md border border-gray-300 bg-white px-4 py-1.5 font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   Log In
                 </Link>
                 <Link
                   href="/register"
-                  className="rounded-md bg-green-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-green-700 transition-colors"
+                  className="rounded-md bg-green-600 px-4 py-1.5 font-semibold text-white hover:bg-green-700 transition-colors"
                 >
                   Sign Up
                 </Link>
