@@ -2,6 +2,7 @@
 // Trades dashboard — shows the current user's active and completed trades.
 
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { ArrowRightLeft, Clock, CheckCircle, AlertTriangle, XCircle } from 'lucide-react'
@@ -119,19 +120,24 @@ function TradeRow({ trade, userId }: { trade: Trade; userId: string }) {
   })
 
   return (
-    <li className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-gray-900">
-          Trade #{trade.id.slice(0, 8).toUpperCase()}
-        </p>
-        <p className="mt-0.5 text-xs text-gray-400">
-          {role} · Updated {updatedAt}
-        </p>
-        {trade.vibe_score !== null && (
-          <p className="mt-0.5 text-xs text-indigo-500">Vibe score: {trade.vibe_score}/100</p>
-        )}
-      </div>
-      <StatusBadge status={trade.status} />
+    <li>
+      <Link
+        href={`/trades/${trade.id}`}
+        className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm hover:border-gray-300 hover:bg-gray-50 transition-colors"
+      >
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-gray-900">
+            Trade #{trade.id.slice(0, 8).toUpperCase()}
+          </p>
+          <p className="mt-0.5 text-xs text-gray-400">
+            {role} · Updated {updatedAt}
+          </p>
+          {trade.vibe_score !== null && (
+            <p className="mt-0.5 text-xs text-indigo-500">Vibe score: {trade.vibe_score}/100</p>
+          )}
+        </div>
+        <StatusBadge status={trade.status} />
+      </Link>
     </li>
   )
 }

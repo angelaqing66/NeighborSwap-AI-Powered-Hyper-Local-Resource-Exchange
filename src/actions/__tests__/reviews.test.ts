@@ -110,19 +110,19 @@ describe('submitReviewAction', () => {
 
   it('returns error when score is below 1', async () => {
     const result = await submitReviewAction(TRADE_ID, 0, null)
-    expect(result.error).toMatch(/1 and 5/i)
+    expect(result.error).toMatch(/1 and 100/i)
     expect(mockReviewInsert).not.toHaveBeenCalled()
   })
 
-  it('returns error when score is above 5', async () => {
-    const result = await submitReviewAction(TRADE_ID, 6, null)
-    expect(result.error).toMatch(/1 and 5/i)
+  it('returns error when score is above 100', async () => {
+    const result = await submitReviewAction(TRADE_ID, 101, null)
+    expect(result.error).toMatch(/1 and 100/i)
     expect(mockReviewInsert).not.toHaveBeenCalled()
   })
 
   it('returns error when score is not an integer', async () => {
-    const result = await submitReviewAction(TRADE_ID, 3.5, null)
-    expect(result.error).toMatch(/1 and 5/i)
+    const result = await submitReviewAction(TRADE_ID, 50.5, null)
+    expect(result.error).toMatch(/1 and 100/i)
     expect(mockReviewInsert).not.toHaveBeenCalled()
   })
 
@@ -157,19 +157,21 @@ describe('submitReviewAction', () => {
     expect(mockReviewInsert).not.toHaveBeenCalled()
   })
 
-  // ── User is not counterparty ────────────────────────────────────────────────
+  // ── Party restrictions ──────────────────────────────────────────────────────
 
-  it('returns error when user is not the counterparty (initiator tries to review)', async () => {
+  it('allows initiator to review (reviewee is counterparty)', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: INITIATOR_ID } } })
-    const result = await submitReviewAction(TRADE_ID, 4, 'Great!')
-    expect(result.error).toMatch(/lender/i)
-    expect(mockReviewInsert).not.toHaveBeenCalled()
+    const result = await submitReviewAction(TRADE_ID, 75, 'Great!')
+    expect(result.error).toBeNull()
+    const payload = mockReviewInsert.mock.calls[0][0] as Record<string, unknown>
+    expect(payload.reviewer_id).toBe(INITIATOR_ID)
+    expect(payload.reviewee_id).toBe(COUNTERPARTY_ID)
   })
 
   it('returns error when user is unrelated to the trade', async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: 'stranger-user-999' } } })
-    const result = await submitReviewAction(TRADE_ID, 4, 'Great!')
-    expect(result.error).toMatch(/lender/i)
+    const result = await submitReviewAction(TRADE_ID, 50, 'Great!')
+    expect(result.error).toMatch(/not a party/i)
     expect(mockReviewInsert).not.toHaveBeenCalled()
   })
 
