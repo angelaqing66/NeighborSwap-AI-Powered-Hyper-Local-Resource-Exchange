@@ -5,6 +5,7 @@
 import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import {
   Users,
   ArrowLeftRight,
@@ -17,6 +18,7 @@ import {
   Shield,
   Loader,
   CalendarCheck,
+  FlaskConical,
 } from 'lucide-react'
 import type { TradeStatus } from '@/types/trades'
 import { computeStatusBreakdown, computeActiveCount } from '@/lib/getDevStats'
@@ -141,9 +143,18 @@ export default async function DevPage() {
   return (
     <div>
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Developer Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-500">Platform statistics — live from Supabase</p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Developer Dashboard</h1>
+          <p className="mt-1 text-sm text-gray-500">Platform statistics — live from Supabase</p>
+        </div>
+        <Link
+          href="/dev/eval"
+          className="flex items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+        >
+          <FlaskConical className="h-4 w-4" />
+          Test Coverage
+        </Link>
       </div>
 
       {/* Top summary cards */}
