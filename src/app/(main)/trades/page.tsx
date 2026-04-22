@@ -63,8 +63,9 @@ export default async function TradesPage() {
   }
 
   const items = (trades ?? []) as Trade[]
-  const active = items.filter((t) => !['completed', 'cancelled'].includes(t.status))
-  const history = items.filter((t) => ['completed', 'cancelled'].includes(t.status))
+  const HISTORY_STATUSES: TradeStatus[] = ['completed', 'cancelled', 'disputed', 'flagged']
+  const active = items.filter((t) => !HISTORY_STATUSES.includes(t.status))
+  const history = items.filter((t) => HISTORY_STATUSES.includes(t.status))
 
   return (
     <>
