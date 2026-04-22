@@ -71,15 +71,13 @@ export async function sendMessageAction(
   // filtered by the SELECT RLS policy even though the INSERT succeeded.
   const messageId = crypto.randomUUID()
 
-  const { error } = await supabase
-    .from('messages')
-    .insert({
-      id: messageId,
-      trade_id: tradeId,
-      sender_id: user.id,
-      content: contentToStore,
-      sent_at,
-    })
+  const { error } = await supabase.from('messages').insert({
+    id: messageId,
+    trade_id: tradeId,
+    sender_id: user.id,
+    content: contentToStore,
+    sent_at,
+  })
 
   if (error) {
     console.error('[sendMessageAction] insert failed', {
