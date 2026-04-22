@@ -117,6 +117,14 @@ export default async function DevPage() {
 
   if (!user) redirect('/login')
 
+  const { data: profile } = await supabase
+    .from('users')
+    .select('is_admin')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile?.is_admin) redirect('/')
+
   // Fetch user count and all trade statuses in parallel.
   const [userResult, tradeResult] = await Promise.all([
     supabase.from('users').select('*', { count: 'exact', head: true }),
