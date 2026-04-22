@@ -22,16 +22,33 @@ export default function MessageForm({ tradeId, tradeStatus }: MessageFormProps) 
     setSafetyWarning(null)
     setContent('')
     startTransition(async () => {
-      const result = await sendMessageAction(tradeId, text)
-      if (result.error) {
-        setError(result.error)
-        setContent(text) // restore on failure
-      } else if (result.safety_flags?.was_redacted) {
-        setSafetyWarning(
-          'Some personal information was automatically removed from your message to protect your privacy.'
-        )
-      } else if (result.safety_flags?.has_phishing_link) {
-        setSafetyWarning('A suspicious link was detected in your message. Please be cautious.')
+      try {
+        const result = await sendMessageAction(tradeId, text)
+        if (result.error) {
+          setError(result.error)
+          setContent(text) // restore on failure
+        } else if (result.safety_flags?.was_redacted) {
+          setSafetyWarning(
+            'Some personal information was automatically removed from your message to protect your privacy.'
+          )
+        } else if (result.safety_flags?.has_phishing_link) {
+          setSafetyWarning('A suspicious link was detected in your message. Please be cautious.')
+        }
+      } catch (err) {
+        // In Next.js 16 + React 19, async transitions throw (not return) on
+        // network errors or stale deployment mismatches.  Catch here so the
+        // error never reaches the route-level error boundary and crashes the
+        // whole chat UI.  A stale action ID resolves after a page refresh.
+        setContent(text) // restore so the user can retry
+        const msg = err instanceof Error ? err.message : ''
+        if (
+          msg.toLowerCase().includes('server action') ||
+          msg.toLowerCase().includes('not found')
+        ) {
+          setError('Page was updated — please refresh and try again.')
+        } else {
+          setError('Failed to send message. Please try again.')
+        }
       }
     })
   }
