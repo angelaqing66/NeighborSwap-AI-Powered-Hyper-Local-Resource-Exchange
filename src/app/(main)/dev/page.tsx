@@ -4,6 +4,7 @@
 
 import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -127,10 +128,11 @@ export default async function DevPage() {
 
   if (!profile?.is_admin) redirect('/')
 
-  // Fetch user count and all trade statuses in parallel.
+  // Use service-role client to count all platform trades/users, bypassing per-user RLS.
+  const adminClient = createAdminClient()
   const [userResult, tradeResult] = await Promise.all([
-    supabase.from('users').select('*', { count: 'exact', head: true }),
-    supabase.from('trades').select('status'),
+    adminClient.from('users').select('*', { count: 'exact', head: true }),
+    adminClient.from('trades').select('status'),
   ])
 
   const userCount = userResult.count ?? 0
