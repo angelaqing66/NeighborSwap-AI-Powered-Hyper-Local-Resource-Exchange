@@ -2,12 +2,6 @@
 # Supabase CLI project configuration.
 # Run `npx supabase link --project-ref <ref>` to link to the cloud project,
 # then `npx supabase db push` to apply all pending migrations.
-# Your project ref is visible in the Supabase dashboard URL:
-#   https://supabase.com/dashboard/project/<project-ref>
-
-[project]
-# Set this after running `npx supabase link --project-ref <ref>`
-# or it will be written automatically by the link command.
 
 [api]
 enabled = true
@@ -34,8 +28,6 @@ max_client_conn = 100
 [realtime]
 enabled = true
 ip_version = "IPv6"
-heartbeat_interval_ms = 5000
-ping_timeout_ms = 60000
 max_header_length = 4096
 
 [studio]
@@ -59,7 +51,6 @@ enabled = true
 
 [auth]
 enabled = true
-port = 54321
 site_url = "http://127.0.0.1:3000"
 additional_redirect_urls = ["https://127.0.0.1:3000"]
 jwt_expiry = 3600
@@ -117,6 +108,3 @@ inspector_port = 8083
 enabled = true
 port = 54327
 backend = "postgres"
-
-[experimental]
-webhooks_enabled = false
